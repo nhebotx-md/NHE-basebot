@@ -1,0 +1,140 @@
+/**
+ * =========================================
+ * 📌 FILE: src/config/config.js (RECONSTRUCTED)
+ * 📌 DESCRIPTION:
+ * File konfigurasi global untuk bot WhatsApp
+ * Versi Clean Architecture
+ *
+ * Berisi:
+ * - Owner configuration
+ * - Bot identity settings
+ * - Prefix configuration
+ * - Welcome/goodbye settings
+ * - Message templates
+ *
+ * 📁 MAPPING: config.js (original) → src/config/config.js
+ * =========================================
+ */
+
+// =========================================
+// 📌 IMPORT / REQUIRE
+// =========================================
+const fs = require('fs');
+
+// =========================================
+// 📌 GLOBAL VARIABLES / CONFIG - OWNER
+// =========================================
+
+// Array nomor owner bot (bisa multiple)
+global.owner = ['62881027174423'];
+
+// =========================================
+// 📌 GLOBAL VARIABLES / CONFIG - BOT IDENTITY
+// =========================================
+
+// Nama bot yang ditampilkan di menu dan pesan
+global.namabot = "ShoNhe";
+global.botname = "ShoNhe";
+
+// Nama owner untuk ditampilkan di kontak dan info
+global.namaowner = "Tangx";
+
+// Nama alternatif owner
+global.namaown = "TangxAja";
+
+// =========================================
+// 📌 GLOBAL VARIABLES / CONFIG - PREFIX
+// =========================================
+
+// Daftar prefix yang bisa digunakan untuk command
+global.prefa = ['','!','.',',','🐤','🗿'];
+
+// =========================================
+// 📌 GLOBAL VARIABLES / CONFIG - THUMBNAIL
+// =========================================
+
+// URL thumbnail utama untuk externalAdReply
+global.thumbnail = "https://lunara.drizznesiasite.biz.id/f/ApAdiHpYChQf.jpg";
+
+// =========================================
+// 📌 GLOBAL VARIABLES / CONFIG - WELCOME/GOODBYE
+// =========================================
+
+// Enable/disable fitur welcome (sambutan member baru)
+global.welcome = true;
+
+// Enable/disable fitur goodbye (pesan saat member keluar)
+global.goodbye = true;
+
+// =========================================
+// 📌 GLOBAL VARIABLES / CONFIG - FALLBACK
+// =========================================
+
+// Fallback avatar jika user tidak punya profile picture
+global.thumb = "https://files.catbox.moe/3l75pp";
+
+// =========================================
+// 📌 GLOBAL VARIABLES / CONFIG - MODE
+// =========================================
+
+// Self mode (hanya owner yang bisa pakai)
+global.self = false;
+
+// Auto read message
+global.autoread = false;
+
+// =========================================
+// 📌 CONSTANTS - MESSAGE TEMPLATES
+// =========================================
+
+// Template pesan untuk berbagai kondisi
+global.mess = {
+    // Pesan jika bukan owner
+    owner: "Maaf hanya untuk owner bot",
+    // Pesan jika bukan premium
+    prem: "Maaf hanya untuk pengguna premium",
+    // Pesan jika bukan admin group
+    admin: "Maaf hanya untuk admin group",
+    // Pesan jika bot bukan admin
+    botadmin: "Maaf bot harus dijadikan admin",
+    // Pesan jika bukan di group
+    group: "Maaf hanya dapat digunakan di dalam group",
+    // Pesan jika harus di private chat
+    private: "Silahkan gunakan fitur di private chat",
+};
+
+// =========================================
+// 📌 FILE WATCHER - AUTO RELOAD
+// =========================================
+
+/**
+ * Setup file watcher untuk auto-reload saat file diubah
+ * Ini memungkinkan perubahan config langsung terapply tanpa restart
+ */
+let file = require.resolve(__filename);
+
+require('fs').watchFile(file, () => {
+    require('fs').unwatchFile(file);
+    console.log('\x1b[0;32m'+__filename+' \x1b[1;32mupdated!\x1b[0m');
+    delete require.cache[file];
+    require(file);
+});
+
+// =========================================
+// 📌 EXPORT / MODULE
+ * =========================================
+module.exports = {
+    owner: global.owner,
+    namabot: global.namabot,
+    botname: global.botname,
+    namaowner: global.namaowner,
+    namaown: global.namaown,
+    prefa: global.prefa,
+    thumbnail: global.thumbnail,
+    welcome: global.welcome,
+    goodbye: global.goodbye,
+    thumb: global.thumb,
+    self: global.self,
+    autoread: global.autoread,
+    mess: global.mess
+};
