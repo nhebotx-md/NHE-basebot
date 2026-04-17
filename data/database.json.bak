@@ -1,0 +1,69 @@
+{
+  "finance": {
+    "initialized": true,
+    "initializedAt": "2026-04-17T17:19:16.272Z",
+    "version": "1.0.0"
+  },
+  "users": {
+    "218786137436242@lid": {
+      "registered": false,
+      "regCode": "REG-6242-1642",
+      "alias": "User",
+      "xp": 0,
+      "level": 1,
+      "role": {
+        "owner": false,
+        "admin": false,
+        "premium": false
+      },
+      "createdAt": 0,
+      "lastActive": 0,
+      "totalCommand": 0
+    },
+    "6282142783884@s.whatsapp.net": {
+      "registered": false,
+      "regCode": "REG-3884-2037",
+      "alias": "User",
+      "xp": 0,
+      "level": 1,
+      "role": {
+        "owner": false,
+        "admin": false,
+        "premium": false
+      },
+      "createdAt": 0,
+      "lastActive": 0,
+      "totalCommand": 0
+    },
+    "218786137436242": {
+      "registered": true,
+      "regCode": "REG-6242-7608",
+      "alias": "User",
+      "xp": 60,
+      "level": 1,
+      "role": {
+        "owner": false,
+        "admin": false,
+        "premium": false
+      },
+      "createdAt": 1776449967608,
+      "lastActive": 1776451584227,
+      "totalCommand": 10
+    },
+    "6282142783884": {
+      "registered": false,
+      "regCode": "REG-3884-7550",
+      "alias": "User",
+      "xp": 0,
+      "level": 1,
+      "role": {
+        "owner": false,
+        "admin": false,
+        "premium": false
+      },
+      "createdAt": 0,
+      "lastActive": 0,
+      "totalCommand": 0
+    }
+  }
+}

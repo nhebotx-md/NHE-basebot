@@ -25,7 +25,7 @@ const REGISTER_MESSAGE = `⚠️ *Kamu belum terdaftar!*
 
 Silakan klik tombol di bawah untuk mendaftar dan mengakses semua fitur bot.`;
 
-const REGISTER_BUTTON_TEXT = 'register';
+const REGISTER_BUTTON_TEXT = '📝 REGISTER SEKARANG';
 
 // =========================================
 // 📌 HELPER FUNCTIONS
@@ -259,7 +259,7 @@ function enforceGate({ user, userId, messageText }) {
             blocked: true,
             allowed: false,
             reason: 'register_required',
-            type: '.register',
+            type: 'register',
             payload: buildRegisterButton(),
             isFirstPrompt: !wasPromptSent(user)
         };
