@@ -1,21 +1,18 @@
 /**
  * =========================================
- * 📌 FILE: src/core/WhosTANG.js (RECONSTRUCTED)
+ * 📌 FILE: src/core/WhosTANG.js (MODIFIED)
  * 📌 DESCRIPTION:
  * File utama handler command bot WhatsApp
  * Versi Clean Architecture - Rebuild from scratch
  *
- * Berisi:
- * - Routing command (switch-case)
- * - Feature handlers (menu, download, group, owner, dll)
- * - Reply mode management
- * - Plugin integration
- * - Eval & shell commands
+ * 🔧 MODIFICATION: Context Injection Integration
+ * - Extract ctx from message object (injected by middleware)
+ * - Pass ctx to plugin loaders via handleData
+ * - All plugins and case handlers can access: ctx.user, ctx.isOwner, ctx.level, etc.
  *
- * 📁 MAPPING: WhosTANG.js (original) → src/core/WhosTANG.js
+ * 📁 INTEGRATION POINT: Context Layer
  * =========================================
  */
-
 // =========================================
 // 📌 CLEAR CONSOLE & INITIAL SETUP
 // =========================================
@@ -28,12 +25,12 @@ require('../config/config');
 
 const { description, version, name, main } = require("../../package.json");
 
-const { 
-    default: baileys, 
-    downloadContentFromMessage, 
-    proto, 
-    generateWAMessage, 
-    getContentType, 
+const {
+    default: baileys,
+    downloadContentFromMessage,
+    proto,
+    generateWAMessage,
+    getContentType,
     prepareWAMessageMedia,
     generateWAMessageFromContent,
     GroupSettingChange,
@@ -70,12 +67,12 @@ const { q, fakeQuoted } = require('../lib/fakeQuoted');
 // =========================================
 // 📌 REPLY MODE MODULE - IMPORT
 // =========================================
-const { 
-    getUserReplyMode, 
-    setUserReplyMode, 
+const {
+    getUserReplyMode,
+    setUserReplyMode,
     isUserExists,
     getReplyModeStats,
-    initReplyMode 
+    initReplyMode
 } = require('../lib/replyMode');
 
 initReplyMode();
@@ -83,22 +80,22 @@ initReplyMode();
 // =========================================
 // 📌 MESSAGE UTILITIES - IMPORT
 // =========================================
-const { 
-    smsg, 
-    tanggal, 
-    getTime, 
-    isUrl, 
-    sleep, 
-    clockString, 
-    runtime, 
-    fetchJson, 
-    getBuffer, 
-    jsonformat, 
-    format, 
-    parseMention, 
-    getRandom, 
-    getGroupAdm, 
-    generateProfilePicture 
+const {
+    smsg,
+    tanggal,
+    getTime,
+    isUrl,
+    sleep,
+    clockString,
+    runtime,
+    fetchJson,
+    getBuffer,
+    jsonformat,
+    format,
+    parseMention,
+    getRandom,
+    getGroupAdm,
+    generateProfilePicture
 } = require('../utils/message');
 
 // =========================================
@@ -129,17 +126,31 @@ global.defaultFakeType = 'random';   // ← BISA DIUBAH: fkontak / fgif / fimg /
 /**
  * Handler utama untuk semua pesan masuk
  * @param {Object} WhosTANG - WhatsApp socket instance
- * @param {Object} m - Serialized message object
+ * @param {Object} m - Serialized message object (with ctx injected by middleware)
  * @param {Object} chatUpdate - Chat update event object
  * @param {Object} store - In-memory store
  */
 module.exports = WhosTANG = async (WhosTANG, m, chatUpdate, store) => {
     try {
         // =========================================
+        // 🔧 CONTEXT EXTRACTION (from middleware injection)
+        // =========================================
+        // ctx is injected by userMiddleware in MessageHandler.js
+        // All plugins and case handlers can access: m.ctx.user, m.ctx.isOwner, etc.
+        const ctx = m.ctx || null;
+
+        // If ctx exists, we can use middleware-resolved values
+        // These are available for plugins and case handlers:
+        // - ctx.user (user object from global.db.users)
+        // - ctx.isOwner, ctx.isAdmin, ctx.isPremium
+        // - ctx.level, ctx.xp
+        // - ctx.totalCommand, ctx.lastActive
+
+        // =========================================
         // MESSAGE TYPE DETECTION
         // =========================================
         let body = '';
-        
+
         const messageTypes = {
             conversation: m.message?.conversation || '[Conversation]',
             imageMessage: m.message?.imageMessage?.caption || '[Image]',
@@ -165,9 +176,9 @@ module.exports = WhosTANG = async (WhosTANG, m, chatUpdate, store) => {
         if (m.mtype && messageTypes[m.mtype]) {
             body = messageTypes[m.mtype];
         } else if (m.message?.messageContextInfo) {
-            body = m.message.buttonsResponseMessage?.selectedButtonId || 
-                   m.message.listResponseMessage?.singleSelectReply?.selectedRowId || 
-                   m.text || 
+            body = m.message.buttonsResponseMessage?.selectedButtonId ||
+                   m.message.listResponseMessage?.singleSelectReply?.selectedRowId ||
+                   m.text ||
                    '[Message Context]';
         } else {
             body = '[Unknown Type]';
@@ -176,7 +187,7 @@ module.exports = WhosTANG = async (WhosTANG, m, chatUpdate, store) => {
         // =========================================
         // SENDER & CHAT INFO
         // =========================================
-        const sender = m.key.fromMe 
+        const sender = m.key.fromMe
             ? WhosTANG.user.id.split(":")[0] + "0@s.whatsapp.net" || WhosTANG.user.id
             : m.key.participant || m.key.remoteJid;
         const senderNumber = sender.split('@')[0];
@@ -198,10 +209,12 @@ module.exports = WhosTANG = async (WhosTANG, m, chatUpdate, store) => {
         const premium = JSON.parse(fs.readFileSync("./data/premium.json"));
         const kontributor = JSON.parse(fs.readFileSync('./data/owner.json'));
         const botNumber = await WhosTANG.decodeJid(WhosTANG.user.id);
-        
+
         // =========================================
         // PERMISSION CHECKS
         // =========================================
+        // 🔧 NOTE: These are kept for backward compatibility
+        // New code should prefer: ctx.isOwner, ctx.isAdmin, ctx.isPremium (from middleware)
         const isOwner = [botNumber, ...kontributor, ...global.owner]
             .map(v => v.replace(/[^0-9]/g, '') + '@s.whatsapp.net')
             .includes(m.sender);
@@ -224,11 +237,11 @@ module.exports = WhosTANG = async (WhosTANG, m, chatUpdate, store) => {
         // =========================================
         // GROUP METADATA
         // =========================================
-        const groupMetadata = m?.isGroup 
-            ? await WhosTANG.groupMetadata(m.chat).catch(() => ({})) 
+        const groupMetadata = m?.isGroup
+            ? await WhosTANG.groupMetadata(m.chat).catch(() => ({}))
             : {};
         const groupName = m?.isGroup ? groupMetadata.subject || '' : '';
-        const participants = m?.isGroup 
+        const participants = m?.isGroup
             ? groupMetadata.participants?.map(p => {
                 let admin = null;
                 if (p.admin === 'superadmin') admin = 'superadmin';
@@ -242,8 +255,8 @@ module.exports = WhosTANG = async (WhosTANG, m, chatUpdate, store) => {
                 };
             }) || []
             : [];
-        const groupOwner = m?.isGroup 
-            ? participants.find(p => p.admin === 'superadmin')?.jid || '' 
+        const groupOwner = m?.isGroup
+            ? participants.find(p => p.admin === 'superadmin')?.jid || ''
             : '';
         const groupAdmins = participants
             .filter(p => p.admin === 'admin' || p.admin === 'superadmin')
@@ -306,7 +319,7 @@ Pilih sesuai preferensi kamu ya! 😊`;
                         }
                     }
                 }, { quoted: m });
-                
+
                 global.pendingReplyModeSelection.add(userId);
                 return true;
             } catch (err) {
@@ -318,31 +331,31 @@ Pilih sesuai preferensi kamu ya! 😊`;
 
         const handleReplyModeResponse = async (response, userId) => {
             if (!global.pendingReplyModeSelection.has(userId)) return false;
-            
+
             let selectedMode = null;
-            
+
             if (response === 'replymode_button' || response.includes('button')) {
                 selectedMode = 'button';
             } else if (response === 'replymode_text' || response.includes('text')) {
                 selectedMode = 'text';
             }
-            
+
             if (selectedMode) {
                 setUserReplyMode(userId, selectedMode);
                 global.pendingReplyModeSelection.delete(userId);
-                
-                const confirmText = selectedMode === 'button' 
+
+                const confirmText = selectedMode === 'button'
                     ? `✅ *Mode Button Aktif!*\n\nSekarang semua reply akan menggunakan tombol interaktif.\n\nKetik *.menu* untuk melihat fitur bot!`
                     : `✅ *Mode Text Aktif!*\n\nSekarang semua reply akan menggunakan text biasa.\n\nKetik *.menu* untuk melihat fitur bot!`;
-                
-                await WhosTANG.sendMessage(m.chat, { 
+
+                await WhosTANG.sendMessage(m.chat, {
                     text: confirmText,
                     mentions: [userId]
                 }, { quoted: m });
-                
+
                 return true;
             }
-            
+
             return false;
         };
 
@@ -358,7 +371,7 @@ const smartReply = async (text, options = {}) => {
     const userMode = getUserMode(m.sender);
     const fakeType = options.fakeType || global.defaultFakeType || 'fkontak';
     const fakeOpt  = options.fakeOpt  || {};
-    
+
     // Ambil fake quoted dengan safety
     let finalQuoted = options.quoted;
     if (!finalQuoted || !finalQuoted.key) {
@@ -392,7 +405,7 @@ const smartReply = async (text, options = {}) => {
             console.error('❌ Button reply failed, falling back to text:', err.message);
         }
     }
-    
+
     // Text fallback
     return await WhosTANG.sendMessage(m.chat, {
         text: text,
@@ -418,7 +431,7 @@ const reply = (teks, opt = {}) => {
         // =========================================
         const time = moment().tz("Asia/Jakarta").format("HH:mm:ss");
         let ucapanWaktu = "🌆𝐒𝐞𝐥𝐚𝐦𝐚𝐭 𝐒𝐮𝐛𝐮𝐡";
-        
+
         if (time >= "19:00:00" && time < "23:59:59") {
             ucapanWaktu = "🌃𝐒𝐞𝐥𝐚𝐦𝐚𝐭 𝐌𝐚𝐥𝐚𝐦";
         } else if (time >= "15:00:00" && time < "19:00:00") {
@@ -512,7 +525,7 @@ const reply = (teks, opt = {}) => {
             out = out.replace(/export\s+function\s+([A-Za-z0-9_$]+)\s*\(/g, (m, name) => {
                 return `function ${name}(`;
             });
-            
+
             const exportedFuncs = [];
             const funcRegex = /export\s+function\s+([A-Za-z0-9_$]+)\s*\(/g;
             while ((match = funcRegex.exec(code))) exportedFuncs.push(match[1]);
@@ -541,7 +554,7 @@ const reply = (teks, opt = {}) => {
         // RUNTIME & UTILITIES
         // =========================================
         const RunTime = `_${runtime(process.uptime())}_`;
-        
+
         const pickRandom = (arr) => {
             return arr[Math.floor(Math.random() * arr.length)];
         };
@@ -602,6 +615,15 @@ if (m.message) {
         );
     }
 
+    // 🔥 MIDDLEWARE CONTEXT INFO (NEW)
+    if (ctx) {
+        entries.push(
+            ['🛡️', 'MIDDLEWARE', 'ACTIVE'],
+            ['📊', 'LEVEL', `Lv.${ctx.level} (${ctx.xp} XP)`],
+            ['🎭', 'ROLE', ctx.roleDisplay || ctx.role]
+        );
+    }
+
     entries.forEach(([icon, label, value]) => {
         console.log(
             chalk.bgHex('#0a0a0a').hex('#ffff00')(`   ${icon} `) +
@@ -631,31 +653,33 @@ if (m.message) {
         // =========================================
         // LOAD PLUGINS WITH REPLY MODE SUPPORT
         // =========================================
+        // 🔧 MODIFIED: Added ctx to handleData for plugin access
         const { createReplyEngine } = require("../core/ReplyEngine");
         const loadPluginsCommand = require("../command/handler");
-        const handleData = { 
-    WhosTANG, 
-    text, 
-    args, 
-    isOwn, 
-    isPrem, 
-    isCmd, 
-    command, 
-    reply, 
+
+        const handleData = {
+    WhosTANG,
+    text,
+    args,
+    isOwn,
+    isPrem,
+    isCmd,
+    command,
+    reply,
     smartReply,
-    conn, 
+    conn,
     sock,
     fakeQuoted,
-    quoted, 
-    fetchJson, 
-    randomKarakter, 
-    formatSize, 
-    sleep, 
-    smsg, 
-    isOwner, 
-    isPremium, 
-    isCmd, 
-    prefix, 
+    quoted,
+    fetchJson,
+    randomKarakter,
+    formatSize,
+    sleep,
+    smsg,
+    isOwner,
+    isPremium,
+    isCmd,
+    prefix,
     usedPrefix,
     getUserMode,
     m,
@@ -663,7 +687,18 @@ if (m.message) {
 
     // 🔥 FIX UTAMA
     createReplyEngine,
-    global
+    global,
+
+    // 🔧 MIDDLEWARE CONTEXT INJECTION (NEW)
+    // All plugins can now access:
+    ctx,
+    user: ctx?.user || null,
+    level: ctx?.level || 1,
+    xp: ctx?.xp || 0,
+    middlewareRole: ctx?.role || 'user',
+    isMiddlewareOwner: ctx?.isOwner || false,
+    isMiddlewareAdmin: ctx?.isAdmin || false,
+    isMiddlewarePremium: ctx?.isPremium || false,
 };
 
         if (isCmd) {
@@ -673,6 +708,7 @@ if (m.message) {
         // =========================================
         // LOAD ESM PLUGINS
         // =========================================
+        // 🔧 NOTE: ctx is also available in ESM plugins via handleData
         if (isCmd) {
             const { default: handleMessage } = await import("../command/handle.mjs");
             await handleMessage(m, command, handleData);
@@ -726,8 +762,8 @@ TOTAL FITUR : ${TOTAL}`;
 case "menulist":
 case "listmenu": {
     const engine = createReplyEngine(conn, global);
-    
-    const ctx = {
+
+    const ctx_local = {
         name: m.pushName || "User",
         number: (m.sender || "0@s.whatsapp.net").split('@')[0],
         thumb: global.thumb
@@ -762,7 +798,7 @@ case "listmenu": {
                 ]
             }
         ],
-        ctx
+        ctx: ctx_local
     });
 }
 break;
@@ -773,8 +809,8 @@ break;
 case "menubutton":
 case "buttonmenu": {
     const engine = createReplyEngine(conn, global);
-    
-    const ctx = {
+
+    const ctx_local = {
         name: m.pushName || "User",
         number: (m.sender || "0@s.whatsapp.net").split('@')[0],
         thumb: global.thumb
@@ -788,7 +824,7 @@ case "buttonmenu": {
             { buttonId: ".ping", buttonText: { displayText: "🏓 PING" } },
             { buttonId: ".owner", buttonText: { displayText: "👑 OWNER" } }
         ],
-        ctx
+        ctx: ctx_local
     });
 }
 break;
@@ -799,8 +835,8 @@ break;
 case "welcomeuser":
 case "greet": {
     const engine = createReplyEngine(conn, global);
-    
-    const ctx = {
+
+    const ctx_local = {
         name: m.pushName || "User",
         number: (m.sender || "0@s.whatsapp.net").split('@')[0],
         thumb: global.thumb
@@ -815,7 +851,7 @@ case "greet": {
             { buttonId: ".menu", buttonText: { displayText: "📜 LIHAT MENU" } },
             { buttonId: ".help", buttonText: { displayText: "❓ BANTUAN" } }
         ],
-        ctx
+        ctx: ctx_local
     });
 }
 break;
@@ -826,8 +862,8 @@ break;
 case "flowmenu":
 case "advancedmenu": {
     const engine = createReplyEngine(conn, global);
-    
-    const ctx = {
+
+    const ctx_local = {
         name: m.pushName || "User",
         number: (m.sender || "0@s.whatsapp.net").split('@')[0],
         thumb: global.thumb
@@ -863,7 +899,7 @@ case "advancedmenu": {
                 }
             ]
         },
-        ctx
+        ctx: ctx_local
     });
 }
 break;
@@ -874,8 +910,8 @@ break;
 case "fullmenu":
 case "supermenu": {
     const engine = createReplyEngine(conn, global);
-    
-    const ctx = {
+
+    const ctx_local = {
         name: m.pushName || "User",
         number: (m.sender || "0@s.whatsapp.net").split('@')[0],
         thumb: global.thumb
@@ -929,7 +965,7 @@ case "supermenu": {
                 }
             ]
         },
-        ctx
+        ctx: ctx_local
     });
 }
 break;
@@ -940,8 +976,8 @@ break;
 case "botinfo":
 case "infobot": {
     const engine = createReplyEngine(conn, global);
-    
-    const ctx = {
+
+    const ctx_local = {
         name: m.pushName || "User",
         number: (m.sender || "0@s.whatsapp.net").split('@')[0],
         thumb: global.thumb
@@ -965,7 +1001,7 @@ case "infobot": {
 
     await engine.send(m, {
         text: infoText,
-        ctx
+        ctx: ctx_local
     });
 }
 break;
@@ -973,25 +1009,31 @@ break;
 // =========================================
 // 📌 CASE: PROFILE USER
 // =========================================
+// 🔧 MODIFIED: Now uses ctx data if available
 case "profile":
 case "me": {
     const engine = createReplyEngine(conn, global);
-    
-    const ctx = {
-        name: m.pushName || "User",
-        number: (m.sender || "0@s.whatsapp.net").split('@')[0],
-        thumb: global.thumb
-    };
+
+    // Use middleware context data if available
+    const userName = m.pushName || "No Name";
+    const userNumber = (m.sender || "0@s.whatsapp.net").split('@')[0];
+    const userLevel = ctx?.level || 1;
+    const userXp = ctx?.xp || 0;
+    const userRole = ctx?.roleDisplay || (isOwner ? 'Owner 👑' : isPremium ? 'Premium 💎' : 'User 👤');
+    const userCommands = ctx?.totalCommand || 0;
 
     const profileText = `
 👤 *YOUR PROFILE*
 
-📝 *Name:* ${m.pushName || 'No Name'}
-📱 *Number:* ${(m.sender || "0@s.whatsapp.net").split('@')[0]}
+📝 *Name:* ${userName}
+📱 *Number:* ${userNumber}
 🔢 *JID:* ${m.sender}
 
-👑 *Role:* ${isOwner ? 'Owner 👑' : isPremium ? 'Premium 💎' : 'User 👤'}
+👑 *Role:* ${userRole}
+📊 *Level:* ${userLevel}
+✨ *XP:* ${userXp}
 📋 *Reply Mode:* ${getUserMode(m.sender).toUpperCase()}
+📈 *Total Commands:* ${userCommands}
 
 ${isGroup ? `👥 *Group:* ${groupName}\n🎭 *Admin:* ${isAdmins ? 'Yes ✅' : 'No ❌'}` : ''}
     `.trim();
@@ -1003,7 +1045,11 @@ ${isGroup ? `👥 *Group:* ${groupName}\n🎭 *Admin:* ${isAdmins ? 'Yes ✅' : 
             { buttonId: ".menu", buttonText: { displayText: "📜 MENU" } },
             { buttonId: ".replymode", buttonText: { displayText: "🎨 MODE" } }
         ],
-        ctx
+        ctx: {
+            name: userName,
+            number: userNumber,
+            thumb: global.thumb
+        }
     });
 }
 break;
@@ -1014,10 +1060,10 @@ break;
 case "groupinfo":
 case "gcinfo": {
     if (!isGroup) return reply("❌ Khusus grup!");
-    
+
     const engine = createReplyEngine(conn, global);
-    
-    const ctx = {
+
+    const ctx_local = {
         name: m.pushName || "User",
         number: (m.sender || "0@s.whatsapp.net").split('@')[0],
         thumb: global.thumb
@@ -1039,7 +1085,7 @@ case "gcinfo": {
     await engine.send(m, {
         text: groupInfoText,
         mentions: groupOwner ? [groupOwner] : [],
-        ctx
+        ctx: ctx_local
     });
 }
 break;
@@ -1050,8 +1096,8 @@ break;
 case "donasi":
 case "donate": {
     const engine = createReplyEngine(conn, global);
-    
-    const ctx = {
+
+    const ctx_local = {
         name: m.pushName || "User",
         number: (m.sender || "0@s.whatsapp.net").split('@')[0],
         thumb: global.thumb
@@ -1084,7 +1130,7 @@ Terima kasih atas dukungannya! 🙏
             { buttonId: ".owner", buttonText: { displayText: "👑 HUBUNGI OWNER" } },
             { buttonId: ".menu", buttonText: { displayText: "📜 MENU" } }
         ],
-        ctx
+        ctx: ctx_local
     });
 }
 break;
@@ -1092,28 +1138,27 @@ break;
 // =========================================
 // 📌 CASE: CEK PREMIUM
 // =========================================
+// 🔧 MODIFIED: Uses ctx for premium status if available
 case "cekpremium":
 case "premiuminfo": {
     const engine = createReplyEngine(conn, global);
-    
-    const ctx = {
-        name: m.pushName || "User",
-        number: (m.sender || "0@s.whatsapp.net").split('@')[0],
-        thumb: global.thumb
-    };
 
-    const isPrem = premium.includes(m.sender);
-    
+    const userName = m.pushName;
+    const userNumber = (m.sender || "0@s.whatsapp.net").split('@')[0];
+
+    // Prefer middleware context for premium status
+    const isPremStatus = ctx?.isPremium || isPremium;
+
     const premiumText = `
 💎 *PREMIUM INFO* 💎
 
-👤 *User:* ${m.pushName}
-📱 *Number:* ${(m.sender || "0@s.whatsapp.net").split('@')[0]}
+👤 *User:* ${userName}
+📱 *Number:* ${userNumber}
 
-💎 *Status:* ${isPrem ? 'Premium User ✅' : 'Free User 👤'}
+💎 *Status:* ${isPremStatus ? 'Premium User ✅' : 'Free User 👤'}
 
-${isPrem 
-    ? '🎉 Anda adalah user premium!\n✨ Nikmati semua fitur tanpa batas!' 
+${isPremStatus
+    ? '🎉 Anda adalah user premium!\n✨ Nikmati semua fitur tanpa batas!'
     : `📝 *Keuntungan Premium:*
 ▸ Unlimited download
 ▸ Akses fitur eksklusif
@@ -1126,10 +1171,14 @@ ${isPrem
     await engine.sendHybrid(m, {
         text: premiumText,
         footer: "Premium System",
-        buttons: isPrem 
+        buttons: isPremStatus
             ? [{ buttonId: ".menu", buttonText: { displayText: "📜 MENU" } }]
             : [{ buttonId: ".owner", buttonText: { displayText: "👑 UPGRADE PREMIUM" } }],
-        ctx
+        ctx: {
+            name: userName,
+            number: userNumber,
+            thumb: global.thumb
+        }
     });
 }
 break;
@@ -1140,8 +1189,8 @@ break;
 case "help":
 case "bantuan": {
     const engine = createReplyEngine(conn, global);
-    
-    const ctx = {
+
+    const ctx_local = {
         name: m.pushName || "User",
         number: (m.sender || "0@s.whatsapp.net").split('@')[0],
         thumb: global.thumb
@@ -1153,7 +1202,7 @@ case "bantuan": {
 *Cara Menggunakan Bot:*
 
 1️⃣ *Command Prefix*
-   Gunakan prefix: *!* , *.* , atau *,*
+   Gunakan prefix: *!* , *.* atau *,*
    Contoh: *.menu* atau *!ping*
 
 2️⃣ *Reply Mode*
@@ -1191,7 +1240,7 @@ case "bantuan": {
                 ]
             }
         ],
-        ctx
+        ctx: ctx_local
     });
 }
 break;

@@ -1,0 +1,304 @@
+/**
+ * =========================================
+ * 📌 FILE: src/middleware/registerGate.js
+ * 📌 DESCRIPTION:
+ * Register gate system dengan anti-spam protection.
+ * Hard gate: user HARUS register sebelum akses fitur.
+ * Anti-spam: button register hanya dikirim 1x.
+ *
+ * FLOW:
+ * 1. User belum register → kirim button 1x → set registerPromptSent = true
+ * 2. User sudah kirim keyword register → kirim ulang button
+ * 3. User sudah register → ALLOW
+ *
+ * 📁 RULE: FOLDER ISOLATION SYSTEM
+ * =========================================
+ */
+
+// =========================================
+// 📌 CONSTANTS
+// =========================================
+
+const REGISTER_KEYWORDS = ['register', 'daftar', '.register', '!register', '#register'];
+
+const REGISTER_MESSAGE = `⚠️ *Kamu belum terdaftar!*
+
+Silakan klik tombol di bawah untuk mendaftar dan mengakses semua fitur bot.`;
+
+const REGISTER_BUTTON_TEXT = '📝 REGISTER SEKARANG';
+
+// =========================================
+// 📌 HELPER FUNCTIONS
+// =========================================
+
+/**
+ * Generate registration code
+ * Format: REG-<last4digits>-<timestamp4>
+ * @param {string} phoneNumber - User phone number
+ * @returns {string} - Registration code
+ */
+function generateRegCode(phoneNumber) {
+    const last4 = phoneNumber.slice(-4);
+    const timestamp4 = Date.now().toString().slice(-4);
+    return `REG-${last4}-${timestamp4}`;
+}
+
+/**
+ * Check if text contains register keyword
+ * @param {string} text - Message text
+ * @returns {boolean}
+ */
+function isRegisterKeyword(text) {
+    if (!text) return false;
+    const lowerText = text.toLowerCase().trim();
+    return REGISTER_KEYWORDS.some(keyword => lowerText.includes(keyword.toLowerCase()));
+}
+
+// =========================================
+// 📌 USER REGISTRATION CHECK
+// =========================================
+
+/**
+ * Check if user is registered
+ * @param {Object} user - User object from global.db.users
+ * @returns {boolean}
+ */
+function isRegistered(user) {
+    return user && user.registered === true;
+}
+
+/**
+ * Check if register prompt was already sent
+ * @param {Object} user - User object from global.db.users
+ * @returns {boolean}
+ */
+function wasPromptSent(user) {
+    return user && user.registerPromptSent === true;
+}
+
+/**
+ * Determine if we should send register button
+ * Rules:
+ * - Send if prompt never sent
+ * - Send if user explicitly sends register keyword
+ * - Don't send if already sent and no keyword
+ *
+ * @param {Object} user - User object
+ * @param {string} messageText - Current message text
+ * @returns {boolean}
+ */
+function shouldSendPrompt(user, messageText) {
+    // If user sends register keyword, always allow resend
+    if (isRegisterKeyword(messageText)) return true;
+
+    // If prompt already sent, don't send again
+    if (wasPromptSent(user)) return false;
+
+    // First time - send prompt
+    return true;
+}
+
+// =========================================
+// 📌 REGISTRATION PROCESS
+// =========================================
+
+/**
+ * Process user registration
+ * @param {Object} user - User object from global.db.users
+ * @param {string} phoneNumber - User phone number
+ * @returns {Object} - Registration result
+ */
+function processRegistration(user, phoneNumber) {
+    if (!user) {
+        return {
+            success: false,
+            error: 'User data not found'
+        };
+    }
+
+    if (user.registered) {
+        return {
+            success: false,
+            alreadyRegistered: true,
+            message: '✅ Kamu sudah terdaftar!'
+        };
+    }
+
+    // Generate registration code
+    const regCode = generateRegCode(phoneNumber);
+
+    // Update user data
+    user.registered = true;
+    user.regCode = regCode;
+    user.createdAt = Date.now();
+    user.registerPromptSent = true; // Mark as sent since they're now registered
+
+    return {
+        success: true,
+        regCode,
+        message: `✅ *Registrasi Berhasil!*\n\n` +
+                 `Kode: \`${regCode}\`\n` +
+                 `Selamat datang, *${user.alias || 'User'}*! 🎉\n\n` +
+                 `Ketik *.menu* untuk melihat fitur yang tersedia.`
+    };
+}
+
+/**
+ * Create a new unregistered user entry
+ * @param {string} userId - User JID
+ * @returns {Object} - New user object
+ */
+function createUnregisteredUser(userId) {
+    return {
+        registered: false,
+        registerPromptSent: false,
+        regCode: null,
+        alias: 'User',
+        xp: 0,
+        level: 1,
+        role: {
+            owner: false,
+            admin: false,
+            premium: false
+        },
+        createdAt: 0,
+        lastActive: 0,
+        totalCommand: 0
+    };
+}
+
+// =========================================
+// 📌 REGISTER BUTTON UI
+// =========================================
+
+/**
+ * Build register button payload for Baileys
+ * @returns {Object} - Button message payload
+ */
+function buildRegisterButton() {
+    return {
+        text: REGISTER_MESSAGE,
+        buttons: [
+            {
+                buttonId: 'register_now',
+                buttonText: { displayText: REGISTER_BUTTON_TEXT },
+                type: 1
+            }
+        ],
+        headerType: 1,
+        contextInfo: {
+            externalAdReply: {
+                title: 'Pendaftaran Diperlukan',
+                body: 'Klik tombol untuk mendaftar',
+                thumbnailUrl: global.thumbnail || '',
+                sourceUrl: '',
+                mediaType: 1,
+                renderLargerThumbnail: true
+            }
+        }
+    };
+}
+
+/**
+ * Mark that register prompt has been sent
+ * @param {Object} user - User object
+ */
+function markPromptSent(user) {
+    if (user) {
+        user.registerPromptSent = true;
+    }
+}
+
+/**
+ * Reset register prompt flag (for manual retry)
+ * @param {Object} user - User object
+ */
+function resetPromptFlag(user) {
+    if (user) {
+        user.registerPromptSent = false;
+    }
+}
+
+// =========================================
+// 📌 GATE ENFORCEMENT
+// =========================================
+
+/**
+ * Enforce register gate
+ * Returns result indicating whether user should be blocked
+ *
+ * @param {Object} params - Parameters
+ * @param {Object} params.user - User object from DB
+ * @param {string} params.userId - User JID
+ * @param {string} params.messageText - Current message text
+ * @returns {Object} - Gate result
+ */
+function enforceGate({ user, userId, messageText }) {
+    // User is registered - allow
+    if (isRegistered(user)) {
+        return {
+            blocked: false,
+            allowed: true,
+            reason: null
+        };
+    }
+
+    // User not registered - check if we should send prompt
+    const canSendPrompt = shouldSendPrompt(user, messageText);
+
+    if (canSendPrompt) {
+        // Mark prompt as sent to prevent spam
+        markPromptSent(user);
+
+        return {
+            blocked: true,
+            allowed: false,
+            reason: 'register_required',
+            type: 'register',
+            payload: buildRegisterButton(),
+            isFirstPrompt: !wasPromptSent(user)
+        };
+    }
+
+    // Prompt already sent, user sending non-register messages
+    // Silently ignore to prevent spam
+    return {
+        blocked: true,
+        allowed: false,
+        reason: 'awaiting_registration',
+        type: 'silent_block',
+        payload: null,
+        silent: true
+    };
+}
+
+// =========================================
+// 📌 EXPORT
+// =========================================
+module.exports = {
+    // Gate enforcement
+    enforceGate,
+    isRegistered,
+    shouldSendPrompt,
+    wasPromptSent,
+
+    // Registration process
+    processRegistration,
+    generateRegCode,
+    createUnregisteredUser,
+
+    // Button UI
+    buildRegisterButton,
+
+    // Flag management
+    markPromptSent,
+    resetPromptFlag,
+
+    // Keyword detection
+    isRegisterKeyword,
+    REGISTER_KEYWORDS,
+
+    // Constants
+    REGISTER_MESSAGE,
+    REGISTER_BUTTON_TEXT
+};
