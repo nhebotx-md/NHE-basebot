@@ -547,38 +547,71 @@ const reply = (teks, opt = {}) => {
         };
 
         // =========================================
-        // CONSOLE LOGGING
-        // =========================================
-        if (m.message) {
-            const glitchText = (text) => {
-                return chalk.hex('#00ffff').bold(text) + chalk.hex('#ff00ff')('_');
-            };
+// CONSOLE LOGGING (UPGRADED CONTEXT AWARE)
+// =========================================
+if (m.message) {
+    const glitchText = (text) => {
+        return chalk.hex('#00ffff').bold(text) + chalk.hex('#ff00ff')('_');
+    };
 
-            console.log(chalk.bgHex('#0a0a0a').hex('#00ff00')('┌───────────────── 🄼🄴🅂🅂🄰🄶🄴 ─────────────────┐'));
-            console.log(chalk.bgHex('#0a0a0a').hex('#ff00ff')(`   ⚡ ${glitchText('INCOMING TRANSMISSION')}`));
-            console.log(chalk.bgHex('#0a0a0a').hex('#00ffff')('├─────────────────────────────────────────────┤'));
-            
-            const entries = [
-                ['🕐', 'TIMESTAMP', new Date().toLocaleString()],
-                ['📡', 'CONTENT', m.body || m.mtype],
-                ['👤', 'USER', pushname],
-                ['🔢', 'JID', senderNumber],
-                ...(isGroup ? [
-                    ['👥', 'GROUP', groupName],
-                    ['🔗', 'GROUP_ID', m.chat]
-                ] : [])
-            ];
+    // 🔥 DETEKSI SOURCE TYPE
+    const isChannel = m.chat?.endsWith('@newsletter');
+    const chatType = isChannel
+        ? 'CHANNEL'
+        : isGroup
+        ? 'GROUP'
+        : 'PRIVATE';
 
-            entries.forEach(([icon, label, value]) => {
-                console.log(
-                    chalk.bgHex('#0a0a0a').hex('#ffff00')(`   ${icon} `) +
-                    chalk.bgHex('#0a0a0a').hex('#00ff00')(`${label}:`) +
-                    chalk.bgHex('#0a0a0a').hex('#ffffff')(` ${value}`)
-                );
-            });
-            
-            console.log(chalk.bgHex('#0a0a0a').hex('#00ff00')('└─────────────────────────────────────────────┘\n'));
-        }
+    const chatIcon = isChannel
+        ? '📢'
+        : isGroup
+        ? '👥'
+        : '👤';
+
+    console.log(chalk.bgHex('#0a0a0a').hex('#00ff00')('┌─────────────── 🄼🄴🅂🅂🄰🄶🄴 ────────────────┐'));
+    console.log(chalk.bgHex('#0a0a0a').hex('#ff00ff')(`   ⚡ ${glitchText('INCOMING TRANSMISSION')}`));
+    console.log(chalk.bgHex('#0a0a0a').hex('#00ffff')('├────────────────────────────────────────────┤'));
+
+    const entries = [
+        ['🕐', 'TIMESTAMP', new Date().toLocaleString()],
+        ['📡', 'TYPE', chatType],
+        ['📨', 'CONTENT', m.body || m.mtype],
+        ['👤', 'USER', pushname],
+        ['🔢', 'JID', senderNumber],
+    ];
+
+    // 🔥 GROUP INFO
+    if (isGroup) {
+        entries.push(
+            ['👥', 'GROUP', groupName],
+            ['🔗', 'GROUP_ID', m.chat]
+        );
+    }
+
+    // 🔥 CHANNEL INFO
+    if (isChannel) {
+        entries.push(
+            ['📢', 'CHANNEL_ID', m.chat]
+        );
+    }
+
+    // 🔥 PRIVATE INFO
+    if (!isGroup && !isChannel) {
+        entries.push(
+            ['💬', 'CHAT_TYPE', 'Direct Message']
+        );
+    }
+
+    entries.forEach(([icon, label, value]) => {
+        console.log(
+            chalk.bgHex('#0a0a0a').hex('#ffff00')(`   ${icon} `) +
+            chalk.bgHex('#0a0a0a').hex('#00ff00')(`${label}:`) +
+            chalk.bgHex('#0a0a0a').hex('#ffffff')(` ${value}`)
+        );
+    });
+
+    console.log(chalk.bgHex('#0a0a0a').hex('#00ff00')('└────────────────────────────────────────────┘\n'));
+}
 
         // =========================================
         // ALIASES & HELPERS

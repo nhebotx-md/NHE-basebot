@@ -19,70 +19,90 @@
  * @param {Object} Obj.conn - WhatsApp connection
  * @param {Function} Obj.smartReply - Smart reply dengan mode button/text
  */
+/**
+ * =========================================
+ * 📌 BASE PLUGIN TEMPLATE (CJS - FINAL)
+ * =========================================
+ */
+
 const handler = async (m, Obj) => {
-    const { text, args, reply, conn, smartReply, isOwn, isPrem } = Obj;
-    
-    // Contoh penggunaan smartReply dengan externalAdReply
-    await smartReply(`✅ *Plugin berhasil dijalankan!*
+    const {
+        text,
+        args,
+        reply,
+        conn,
+        createReplyEngine,
+        global,
+        plugins
+    } = Obj;
 
-📋 *Informasi:*
-• Command: .plugin
-• Args: ${args.join(' ') || 'tidak ada'}
-• Text: ${text || 'kosong'}
-• Owner: ${isOwn ? 'Ya' : 'Tidak'}
-• Premium: ${isPrem ? 'Ya' : 'Tidak'}
+    try {
+        // ======================
+        // 🔹 VALIDASI ENGINE
+        // ======================
+        if (!createReplyEngine) {
+            throw new Error('createReplyEngine is not provided');
+        }
 
-Ini adalah contoh plugin CJS yang berjalan dengan baik!`, {
-        title: "Plugin Demo",
-        body: "CJS Plugin System"
-    });
+        const engine = createReplyEngine(conn, global);
+
+        // ======================
+        // 🔹 CONTEXT USER
+        // ======================
+        const sender = m.sender || "0@s.whatsapp.net";
+
+        const ctx = {
+            name: m.pushName || "User",
+            number: sender.split('@')[0],
+            thumb: global?.thumb
+        };
+
+        // ======================
+        // 🔥 AKSES PLUGIN SYSTEM
+        // ======================
+        const pluginData = plugins || global.plugins || {};
+        const pluginList = pluginData.list || [];
+        const byTag = pluginData.byTag || new Map();
+
+        // ======================
+        // 🔹 LOGIC UTAMA
+        // ======================
+
+        const totalPlugin = pluginList.length;
+
+        let message = `
+╭───〔 SYSTEM INFO 〕───╮
+│ Total Plugin : ${totalPlugin}
+│ Total Tag    : ${byTag.size}
+╰────────────────────╯
+`.trim();
+
+        // ======================
+        // 🔹 RESPONSE
+        // ======================
+        await engine.sendHybrid(m, {
+            text: message,
+            footer: global?.botname || "Bot System",
+            buttons: [
+                {
+                    buttonId: ".menu",
+                    buttonText: { displayText: "📚 MENU" }
+                }
+            ],
+            ctx
+        });
+
+    } catch (err) {
+        console.error(`[${handler.name || 'plugin'} error]`, err);
+        await reply('❌ Terjadi error pada plugin');
+    }
 };
 
-// =========================================
-// 📌 PLUGIN METADATA
-// =========================================
+// ======================
+// 🔥 METADATA WAJIB
+// ======================
+handler.command = ['baseexample'];
+handler.tags = ['main'];
+handler.help = ['baseexample'];
 
-/**
- * Array command yang tersedia untuk plugin ini
- * Semua command di array akan men-trigger handler
- */
-handler.command = ["plugin", "testplugin", "demo"];
-
-/**
- * Array tags untuk kategorisasi plugin
- */
-handler.tags = ["tools", "info"];
-
-/**
- * Array help text untuk menu
- */
-handler.help = ["plugin", "testplugin", "demo"];
-
-/**
- * Owner only restriction
- * Set ke true jika hanya owner yang bisa pakai
- */
-handler.owner = false;
-
-/**
- * Premium only restriction
- * Set ke true jika hanya premium yang bisa pakai
- */
-handler.premium = false;
-
-/**
- * Group only restriction
- * Set ke true jika hanya bisa di group
- */
-handler.group = false;
-
-/**
- * Private only restriction
- * Set ke true jika hanya bisa di private chat
- */
-handler.private = false;
-
-// =========================================
-// 📌 EXPORT / MODULE
-// =========================================
 module.exports = handler;

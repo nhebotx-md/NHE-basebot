@@ -17,11 +17,219 @@ const { replyAdaptive, sendSimpleText, sendWithExternalAd, getUserMode } = requi
 
 // Cache untuk plugins
 let pluginsCache = null;
+let pluginRegistry = {
+    list: [],
+    byTag: new Map()
+};
+const syncPlugins = () => {
+const dir = path.join(__dirname, "../../Plugins-CJS");
+
+const files = fs.readdirSync(dir)  
+    .filter(f => f.endsWith('.js'))  
+    .map(f => path.join(dir, f));  
+
+const currentPaths = new Set(files);  
+
+// 🔥 HAPUS YANG SUDAH TIDAK ADA  
+pluginRegistry.list = pluginRegistry.list.filter(p => {  
+    if (!currentPaths.has(p._path)) {  
+        console.log("🗑️ Auto remove (sync):", p._file);  
+        return false;  
+    }  
+    return true;  
+});  
+
+// 🔥 REBUILD TAG  
+const newMap = new Map();  
+
+for (const plugin of pluginRegistry.list) {  
+    const tags = plugin.tags || ['uncategorized'];  
+
+    for (const tag of tags) {  
+        const key = String(tag).toLowerCase();  
+
+        if (!newMap.has(key)) newMap.set(key, []);  
+        newMap.get(key).push(plugin);  
+    }  
+}  
+
+pluginRegistry.byTag = newMap;
+
+};
+//helper rebuild tag//
+const rebuildTagIndex = (plugins) => {
+    const map = new Map();
+syncPlugins();
+    for (const plugin of plugins) {
+        if (!plugin.tags || !plugin.tags.length) {
+            const key = "uncategorized";
+            if (!map.has(key)) map.set(key, []);
+            map.get(key).push(plugin);
+            continue;
+        }
+
+        for (const tag of plugin.tags) {
+            const key = tag.toLowerCase();
+            if (!map.has(key)) map.set(key, []);
+            map.get(key).push(plugin);
+        }
+    }
+
+    return map;
+};
+
+//reload single plugin
+const reloadSinglePlugin = (filePath) => {
+    try {
+        const resolved = require.resolve(filePath);
+
+        if (require.cache[resolved]) {
+            delete require.cache[resolved];
+        }
+
+        const plugin = require(filePath);
+
+        if (typeof plugin !== "function" || !Array.isArray(plugin.command)) {
+            return null;
+        }
+
+        const tags = Array.isArray(plugin.tags)
+            ? [...new Set(plugin.tags.map(t => String(t).toLowerCase().trim()))]
+            : [];
+
+        plugin.tags = tags;
+        plugin.help = Array.isArray(plugin.help) ? plugin.help : [];
+        plugin._file = path.basename(filePath);
+        plugin._path = filePath;
+        plugin._category = tags[0] || "uncategorized";
+
+        return plugin;
+
+    } catch (err) {
+        console.error("Reload gagal:", filePath, err);
+        return null;
+    }
+};
+
+// upsert && remove plugin
+const upsertPlugin = (plugin) => {
+    pluginRegistry.list = pluginRegistry.list.filter(p => p._path !== plugin._path);
+    pluginRegistry.list.push(plugin);
+
+    // 🔥 rebuild ulang
+    const newMap = new Map();
+
+    for (const p of pluginRegistry.list) {
+        const tags = p.tags || ['uncategorized'];
+
+        for (const tag of tags) {
+            const key = String(tag).toLowerCase();
+
+            if (!newMap.has(key)) newMap.set(key, []);
+            newMap.get(key).push(p);
+        }
+    }
+
+    pluginRegistry.byTag = newMap;
+
+    console.log("♻️ Plugin updated:", plugin._file);
+};
+
+const removePlugin = (filePath) => {
+    // hapus dari list utama
+    pluginRegistry.list = pluginRegistry.list.filter(p => p._path !== filePath);
+
+    // 🔥 rebuild ulang byTag (INI KUNCI)
+    const newMap = new Map();
+
+    for (const plugin of pluginRegistry.list) {
+        const tags = plugin.tags || ['uncategorized'];
+
+        for (const tag of tags) {
+            const key = String(tag).toLowerCase();
+
+            if (!newMap.has(key)) newMap.set(key, []);
+            newMap.get(key).push(plugin);
+        }
+    }
+
+    pluginRegistry.byTag = newMap;
+
+    console.log("🗑️ Plugin removed & registry cleaned:", filePath);
+};
+
+
+// watcher (core hot reload) //
+const watchPlugins = (dir) => {
+    const scan = (folder) => {
+        fs.watch(folder, (eventType, filename) => {
+            if (!filename || !filename.endsWith(".js")) return;
+
+            const fullPath = path.join(folder, filename);
+
+            setTimeout(() => {
+                if (fs.existsSync(fullPath)) {
+                    const plugin = reloadSinglePlugin(fullPath);
+                    if (plugin) {
+                        upsertPlugin(plugin);
+                        console.log("♻️ Reload:", filename);
+                    }
+                } else {
+                    removePlugin(fullPath);
+                    console.log("🗑️ Removed:", filename);
+                }
+            }, 100);
+        });
+
+        const items = fs.readdirSync(folder);
+        for (const item of items) {
+            const full = path.join(folder, item);
+            if (fs.statSync(full).isDirectory()) {
+                scan(full);
+            }
+        }
+    };
+
+    scan(dir);
+};
+
+// intergrasi sistem plugin
+const initPluginSystem = async () => {
+    const plugins = await loadPlugins();
+
+    pluginRegistry.list = plugins;
+    pluginRegistry.byTag = plugins.byTag;
+
+    const dir = path.join(__dirname, "../../Plugins-CJS");
+    watchPlugins(dir);
+
+    console.log("🔥 Hot reload aktif");
+
+    return pluginRegistry;
+};
 
 /**
  * Fungsi untuk memuat semua plugins dari folder Plugins-CJS
  * @returns {Array} - Array plugins dengan metadata
  */
+const getAllPluginFiles = (dir) => {
+    let results = [];
+    const list = fs.readdirSync(dir);
+
+    for (const file of list) {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+
+        if (stat.isDirectory()) {
+            results = results.concat(getAllPluginFiles(filePath));
+        } else if (filePath.endsWith(".js")) {
+            results.push(filePath);
+        }
+    }
+
+    return results;
+};
+
 const loadPlugins = async () => {
     const dir = path.join(__dirname, "../../Plugins-CJS");
     const plugins = [];
@@ -49,11 +257,10 @@ const loadPlugins = async () => {
         return plugins;
     }
 
-    const files = fs.readdirSync(dir);
+    const files = getAllPluginFiles(dir);
 
-    for (const file of files) {
-        const filePath = path.join(dir, file);
-        if (!filePath.endsWith(".js")) continue;
+for (const filePath of files) {
+    const file = path.basename(filePath);
 
         try {
             const resolved = require.resolve(filePath);
@@ -104,12 +311,30 @@ const handleMessage = async (m, commandText, Obj = {}) => {
     }
 
     if (!pluginsCache) {
-        pluginsCache = await loadPlugins();
-        console.log("✅ Plugins loaded:", pluginsCache.length);
-        console.log("📦 Tags:", pluginsCache.tags);
-    }
-    Obj.plugins = pluginsCache;
-    global.plugins = pluginsCache;
+    pluginsCache = await loadPlugins();
+    pluginRegistry.list = pluginsCache;
+    pluginRegistry.byTag = pluginsCache.byTag;
+
+    console.log("✅ Plugins loaded:", pluginsCache.length);
+    console.log("📦 Tags:", pluginsCache.tags);
+}
+
+// 🔥 START WATCHER SEKALI SAJA
+if (!global.__pluginWatcherStarted) {
+    const dir = path.join(__dirname, "../../Plugins-CJS");
+    watchPlugins(dir);
+    global.__pluginWatcherStarted = true;
+    console.log("🔥 Hot reload aktif");
+}
+    Obj.plugins = {
+    list: pluginRegistry.list,
+    byTag: pluginRegistry.byTag
+};
+
+global.plugins = Obj.plugins;
+
+global.plugins = Obj.plugins;
+pluginsCache = pluginRegistry.list;
 
     const smartReply = async (text, options = {}) => {
         const userMode = getUserMode(m.sender);
@@ -311,7 +536,7 @@ const handleMessage = async (m, commandText, Obj = {}) => {
         Obj.button = {};
     }
 
-    const plugins = pluginsCache;
+    const plugins = pluginRegistry.list;
 
     for (const plugin of plugins) {
         if (

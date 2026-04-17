@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 
 const handler = async (m, Obj) => {
-    const { reply, conn, createReplyEngine, global, runtime } = Obj;
+    const { reply, conn, createReplyEngine, global, runtime, plugins, pluginsList } = Obj;
 
     try {
         if (!createReplyEngine) {
@@ -27,54 +27,39 @@ const handler = async (m, Obj) => {
         };
 
         // ======================
-        // 🔹 COUNT UTIL (OPTIMIZED)
+        // 🔥 AMBIL PLUGIN DINAMIS
         // ======================
-        const countCase = (filePath) => {
-            try {
-                if (!fs.existsSync(filePath)) return 0;
-                const data = fs.readFileSync(filePath, "utf8");
-                const match = data.match(/case\s+['"`][^'"`]+['"`]\s*:/g);
-                return match ? match.length : 0;
-            } catch {
-                return 0;
-            }
-        };
+        const pluginData = plugins || global.plugins || {};
+const pluginList = pluginData.list || [];
+const byTag = pluginData.byTag || new Map();
+console.log('PLUGIN LIST:', pluginList.length);
+console.log('BYTAG SIZE:', byTag.size);
+console.log('BYTAG KEYS:', [...byTag.keys()]);
 
-        const countFiles = (dir) => {
-            try {
-                if (!fs.existsSync(dir)) return 0;
-                return fs.readdirSync(dir).filter(f =>
-                    f.endsWith(".js") || f.endsWith(".mjs")
-                ).length;
-            } catch {
-                return 0;
-            }
-        };
-
-        const CASE = countCase("./src/core/WhosTANG.js");
-        const ESM = countFiles("./Plugins-ESM");
-        const CJS = countFiles("./Plugins-CJS");
-        const TOTAL = CASE + ESM + CJS;
+        // ======================
+        // 🔥 COUNT OTOMATIS
+        // ======================
+        const TOTAL = pluginList.length || 0;
 
         const menuText = `
 ╭──────[ *ABOUT BOT* ]──────╮
 │▣ Nama-Bot : ${global?.botname || 'NHE BOT'}
-│▣ Version : 1.2.0
+│▣ Version : 2.0.0 (Dynamic)
 │▣ Runtime : ${typeof runtime === 'function' ? runtime(process.uptime()) : '-'}
 │▣ Feature : ${TOTAL} command
-│▣ Type : CJS & ESM (Plugins)
+│▣ System : Auto Plugin Loader
 ╰─────────────────────╯
 
-Halo ${m.pushName || "User"}! 👋
-Pilih menu di bawah ini:
+Halo ${m.pushName || "User"} 👋
+Menu disusun otomatis berdasarkan plugin tags
         `.trim();
 
         // ======================
-        // 🔹 HYBRID UI
+        // 🔹 HEADER UI
         // ======================
         await engine.sendHybrid(m, {
             text: menuText,
-            footer: "ShoNhe Engine System",
+            footer: "Dynamic Menu System",
             buttons: [
                 { buttonId: ".ping", buttonText: { displayText: "🏓 PING" } },
                 { buttonId: ".owner", buttonText: { displayText: "👑 OWNER" } }
@@ -82,46 +67,58 @@ Pilih menu di bawah ini:
             ctx
         });
 
-        // ======================
-        // 🔹 DELAY SAFE
-        // ======================
         await new Promise(r => setTimeout(r, 500));
 
         // ======================
-        // 🔹 LIST UI
+        // 🔥 GENERATE MENU DINAMIS
+        // ======================
+        const sections = [];
+
+        for (const [tag, list] of byTag.entries()) {
+
+            const rows = [];
+
+            for (const plugin of list) {
+                if (!plugin.command || !plugin.command.length) continue;
+
+                const cmd = plugin.command[0];
+
+                rows.push({
+                    title: `⚡ ${cmd}`,
+                    description: plugin.help?.[0] || "No description",
+                    rowId: `.${cmd}`
+                });
+            }
+
+            if (rows.length) {
+                sections.push({
+                    title: `📂 ${tag.toUpperCase()}`,
+                    rows
+                });
+            }
+        }
+
+        // fallback kalau kosong
+        if (!sections.length) {
+            sections.push({
+                title: "⚠️ EMPTY",
+                rows: [{
+                    title: "No plugins detected",
+                    description: "Check plugin loader",
+                    rowId: ".menu"
+                }]
+            });
+        }
+
+        // ======================
+        // 🔹 LIST UI DINAMIS
         // ======================
         await engine.sendListUI(m, {
-            title: "📚 ALL MENU",
-            body: "Silakan pilih kategori menu:",
+            title: "📚 DYNAMIC MENU",
+            body: "Semua menu berdasarkan plugin aktif:",
             footer: global?.botname || "NHE BOT",
-            buttonText: "📋 BUKA MENU",
-            sections: [
-                {
-                    title: "🤖 MAIN MENU",
-                    rows: [
-                        { title: "📜 Menu Utama", description: "Lihat semua fitur", rowId: ".menu" },
-                        { title: "🏓 Ping Bot", description: "Cek kecepatan bot", rowId: ".ping" },
-                        { title: "📊 Runtime", description: "Waktu aktif bot", rowId: ".runtime" },
-                        { title: "👑 Owner", description: "Hubungi owner", rowId: ".owner" }
-                    ]
-                },
-                {
-                    title: "🎵 DOWNLOAD",
-                    rows: [
-                        { title: "🎵 Play Music", description: "Download lagu", rowId: ".play" },
-                        { title: "📹 YouTube MP4", description: "Download video", rowId: ".ytmp4" },
-                        { title: "🌐 All Sosmed", description: "Download sosmed", rowId: ".aio" }
-                    ]
-                },
-                {
-                    title: "⚙️ TOOLS",
-                    rows: [
-                        { title: "🖼️ HD Photo", description: "Enhance foto", rowId: ".remini" },
-                        { title: "🔗 To URL", description: "Upload file", rowId: ".tourl" },
-                        { title: "🎨 Reply Mode", description: "Ubah mode reply", rowId: ".replymode" }
-                    ]
-                }
-            ],
+            buttonText: "📋 LIHAT MENU",
+            sections,
             ctx
         });
 
@@ -130,6 +127,7 @@ Pilih menu di bawah ini:
         await reply('❌ Terjadi error pada menu plugin');
     }
 };
+
 
 // ✅ Metadata wajib
 handler.command = ['menuplugin', 'menureply', 'menup'];
