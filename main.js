@@ -28,6 +28,7 @@ console.clear();
 // Load konfigurasi global terlebih dahulu
 require('./src/config/config');
 
+
 // Import package.json untuk metadata
 const { description, version, name, main } = require("./package.json");
 

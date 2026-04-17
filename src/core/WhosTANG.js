@@ -65,6 +65,7 @@ const moment = require('moment-timezone');
 const { spawn, exec } = require('child_process');
 const babel = require('@babel/core');
 const yts = require('yt-search');
+const { q, fakeQuoted } = require('../lib/fakeQuoted');
 
 // =========================================
 // 📌 REPLY MODE MODULE - IMPORT
@@ -119,6 +120,7 @@ const PREMIUM_PATH = './data/premium.json';
 // =========================================
 global.userReplyModes = {};
 global.pendingReplyModeSelection = new Set();
+global.defaultFakeType = 'random';   // ← BISA DIUBAH: fkontak / fgif / fimg / fvn / random
 
 // =========================================
 // 📌 CORE LOGIC / MAIN FUNCTIONS
@@ -349,66 +351,59 @@ Pilih sesuai preferensi kamu ya! 😊`;
             return userData?.mode || 'text';
         };
 
-        const smartReply = async (text, options = {}) => {
-            const userMode = getUserMode(m.sender);
-            
-            if (userMode === 'button' && !options.forceText) {
-                try {
-                    return await WhosTANG.sendMessage(m.chat, {
-                        text: text,
-                        mentions: options.mentions || [],
-                        contextInfo: {
-                            mentionedJid: options.mentions || [],
-                            externalAdReply: {
-                                title: options.title || global.botname || "NHE BOT",
-                                body: options.body || "Verified System",
-                                thumbnailUrl: options.thumbnailUrl || "https://files.catbox.moe/5x2b8n.jpg",
-                                sourceUrl: options.sourceUrl || "https://wa.me/62881027174423",
-                                mediaType: 1,
-                                renderLargerThumbnail: true
-                            }
-                        }
-                    }, { quoted: options.quoted || m });
-                } catch (err) {
-                    console.error('❌ Button reply failed, falling back to text:', err);
-                }
-            }
-            
+        // =========================================
+// 📌 REPLY FUNCTION DENGAN FAKE QUOTED OTOMATIS (FIXED)
+// =========================================
+const smartReply = async (text, options = {}) => {
+    const userMode = getUserMode(m.sender);
+    const fakeType = options.fakeType || global.defaultFakeType || 'fkontak';
+    const fakeOpt  = options.fakeOpt  || {};
+    
+    // Ambil fake quoted dengan safety
+    let finalQuoted = options.quoted;
+    if (!finalQuoted || !finalQuoted.key) {
+        finalQuoted = (m, fakeType, fakeOpt);
+    }
+
+    // Pastikan quoted selalu valid
+    if (!finalQuoted || !finalQuoted.key) {
+        console.warn('⚠️ Fake quoted invalid, fallback tanpa quoted');
+        finalQuoted = undefined; // biarkan Baileys tidak pakai quoted
+    }
+
+    if (userMode === 'button' && !options.forceText) {
+        try {
             return await WhosTANG.sendMessage(m.chat, {
                 text: text,
-                mentions: options.mentions || []
-            }, { quoted: options.quoted || m });
-        };
-
-        // =========================================
-        // CHECK REPLY MODE BUTTON RESPONSE
-        // =========================================
-        const buttonResponse = m.message?.buttonsResponseMessage?.selectedButtonId || 
-                               m.message?.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson;
-        
-        if (buttonResponse) {
-            if (await handleReplyModeResponse(buttonResponse, m.sender)) {
-                return;
-            }
+                mentions: options.mentions || [],
+                contextInfo: {
+                    mentionedJid: options.mentions || [],
+                    externalAdReply: {
+                        title: options.title || global.botname || "NHE BOT",
+                        body: options.body || "Verified System",
+                        thumbnailUrl: options.thumbnailUrl || "https://files.catbox.moe/5x2b8n.jpg",
+                        sourceUrl: options.sourceUrl || "https://wa.me/62881027174423",
+                        mediaType: 1,
+                        renderLargerThumbnail: true
+                    }
+                }
+            }, { quoted: finalQuoted });
+        } catch (err) {
+            console.error('❌ Button reply failed, falling back to text:', err.message);
         }
+    }
+    
+    // Text fallback
+    return await WhosTANG.sendMessage(m.chat, {
+        text: text,
+        mentions: options.mentions || []
+    }, { quoted: finalQuoted });
+};
 
-        // =========================================
-        // CHECK NEW USER BEFORE PROCESSING COMMAND
-        // =========================================
-        if (isCmd && isNewUser(m.sender) && !global.pendingReplyModeSelection.has(m.sender)) {
-            const skipCommands = ['menu', 'start', 'help', 'owner', 'ping'];
-            if (!skipCommands.includes(command)) {
-                await sendReplyModeSelection(m.sender, m.chat);
-                return;
-            }
-        }
-
-        // =========================================
-        // BASIC REPLY FUNCTION (for compatibility)
-        // =========================================
-        const reply = (teks) => {
-            return smartReply(teks);
-        };
+// Reply shortcut (tetap sama)
+const reply = (teks, opt = {}) => {
+    return smartReply(teks, opt);
+};
 
         // =========================================
         // IMPORT ADDITIONAL FUNCTIONS
@@ -596,144 +591,6 @@ Pilih sesuai preferensi kamu ya! 😊`;
         const isPrem = isPremium;
 
         // =========================================
-        // GLOBAL FAKE QUOTED SETUP
-        // =========================================
-        const thumbPath = './Tang/image/owner.jpg';
-        const thumbBuffer = fs.existsSync(thumbPath)
-            ? fs.readFileSync(thumbPath)
-            : null;
-
-        global.fakeQuoted = (m, options = {}) => {
-            const thumb = thumbBuffer;
-            const sender = m.sender || '0@s.whatsapp.net';
-            const number = sender?.split("@")[0] || "0";
-            const name = m.pushName || "User";
-
-            const baseKey = {
-                participant: "0@s.whatsapp.net",
-                remoteJid: "status@broadcast"
-            };
-
-            return {
-                fkontak: {
-                    key: baseKey,
-                    message: {
-                        contactMessage: {
-                            displayName: global.namaowner || name,
-                            vcard: `BEGIN:VCARD\nVERSION:3.0\nFN:${global.namaowner || name}\nTEL;waid=${number}:${number}\nEND:VCARD`,
-                            jpegThumbnail: thumb
-                        }
-                    }
-                },
-
-                fvn: {
-                    key: baseKey,
-                    message: {
-                        audioMessage: {
-                            mimetype: "audio/ogg; codecs=opus",
-                            seconds: 999999,
-                            ptt: true
-                        }
-                    }
-                },
-
-                fgif: {
-                    key: baseKey,
-                    message: {
-                        videoMessage: {
-                            caption: options.caption || "Powered by Bot",
-                            gifPlayback: true,
-                            jpegThumbnail: thumb
-                        }
-                    }
-                },
-
-                fimg: {
-                    key: baseKey,
-                    message: {
-                        imageMessage: {
-                            caption: options.caption || "Fake Image",
-                            jpegThumbnail: thumb
-                        }
-                    }
-                },
-
-                fdoc: {
-                    key: baseKey,
-                    message: {
-                        documentMessage: {
-                            title: options.title || "Fake Document",
-                            fileName: options.fileName || "file.pdf",
-                            mimetype: "application/pdf",
-                            jpegThumbnail: thumb
-                        }
-                    }
-                },
-
-                forder: {
-                    key: baseKey,
-                    message: {
-                        orderMessage: {
-                            itemCount: 1,
-                            status: 1,
-                            surface: 1,
-                            message: options.message || "Fake Order",
-                            orderTitle: options.title || "Order",
-                            thumbnail: thumb,
-                            sellerJid: sender
-                        }
-                    }
-                },
-
-                floc: {
-                    key: baseKey,
-                    message: {
-                        locationMessage: {
-                            name: options.name || "Fake Location",
-                            jpegThumbnail: thumb
-                        }
-                    }
-                },
-
-                ftext: {
-                    key: baseKey,
-                    message: {
-                        extendedTextMessage: {
-                            text: options.text || "Fake Text Message"
-                        }
-                    }
-                },
-
-                fproduct: {
-                    key: baseKey,
-                    message: {
-                        productMessage: {
-                            product: {
-                                productImage: { jpegThumbnail: thumb },
-                                title: options.title || "Fake Product",
-                                description: options.desc || "Description",
-                                currencyCode: "IDR",
-                                priceAmount1000: "10000000"
-                            },
-                            businessOwnerJid: sender
-                        }
-                    }
-                },
-
-                random: function () {
-                    const allowed = ['fkontak','fvn','fgif','fimg','fdoc','forder','floc','ftext','fproduct'];
-                    const pick = allowed[Math.floor(Math.random() * allowed.length)];
-                    return this[pick];
-                }
-            };
-        };
-
-        global.q = (m, type = 'fkontak', opt = {}) => {
-            const data = global.fakeQuoted(m, opt);
-            return data[type] || data.fkontak;
-        };
-
-        // =========================================
         // SELF MODE CHECK
         // =========================================
         if (global.self && !isOwn) return;
@@ -741,6 +598,7 @@ Pilih sesuai preferensi kamu ya! 😊`;
         // =========================================
         // LOAD PLUGINS WITH REPLY MODE SUPPORT
         // =========================================
+        const { createReplyEngine } = require("../core/ReplyEngine");
         const loadPluginsCommand = require("../command/handler");
         const handleData = { 
             WhosTANG, 
@@ -753,7 +611,8 @@ Pilih sesuai preferensi kamu ya! 😊`;
             reply, 
             smartReply,
             conn, 
-            sock, 
+            sock,
+            fakeQuoted,
             quoted, 
             fetchJson, 
             randomKarakter, 
@@ -766,7 +625,8 @@ Pilih sesuai preferensi kamu ya! 😊`;
             prefix, 
             usedPrefix,
             getUserMode,
-            m
+            m,
+            q
         };
 
         if (isCmd) {
@@ -824,6 +684,163 @@ TOTAL FITUR : ${TOTAL}`;
         switch (command) {
 
             // =========================================
+// 📌 CONTOH CASE DENGAN FAKE QUOTED
+// =========================================
+
+case 'checkfake': {
+    const engine = createReplyEngine(conn, global);
+
+    const fakeTypes = [
+        'fkontak',
+        'fvn',
+        'fgif',
+        'fimg',
+        'fdoc',
+        'forder',
+        'floc',
+        'ftext',
+        'fproduct'
+    ];
+
+    const delay = ms => new Promise(res => setTimeout(res, ms));
+
+    await conn.sendMessage(m.chat, {
+        text: "🔍 Testing semua fake message..."
+    });
+
+    for (let type of fakeTypes) {
+        try {
+            await engine.send(m, {
+                text: `✅ SUCCESS: ${type}`,
+                mode: 'default',
+                options: {
+                    fakeType: type,
+                    caption: `Test ${type}`,
+                    title: `Test ${type}`,
+                    text: `Fake ${type}`,
+                    name: "Surabaya",
+                    message: "Order Test"
+                },
+                ctx: {
+                    name: global.namaowner,
+                    number: global.numberown,
+                    thumb
+                }
+            });
+
+            await delay(800); // anti spam / rate limit
+
+        } catch (err) {
+            console.error(`[ERROR ${type}]`, err);
+
+            await conn.sendMessage(m.chat, {
+                text: `❌ FAILED: ${type}`
+            });
+        }
+    }
+
+    await conn.sendMessage(m.chat, {
+        text: "✅ Semua test fake selesai"
+    });
+
+}
+break;
+case 'checkengine': {
+    const engine = createReplyEngine(conn, global);
+
+    const ctx = {
+        name: m.pushName,
+        number: m.sender.split('@')[0],
+        thumb: global.thumb
+    };
+
+    const results = [];
+
+    // ======================
+    // 🔍 TEST SAFE TYPES
+    // ======================
+    const types = ['fkontak', 'ftext', 'fvn', 'fimg'];
+
+    for (let type of types) {
+        try {
+            await engine.send(m, {
+                text: `✅ SUCCESS: ${type}`,
+                options: { fakeType: type },
+                ctx
+            });
+            results.push(`✔ ${type}`);
+        } catch {
+            results.push(`❌ ${type}`);
+        }
+    }
+
+    // ======================
+    // 🧪 TEST UI MODE
+    // ======================
+    try {
+        await engine.sendUI(m, {
+            title: "UI TEST",
+            body: "Engine UI berjalan normal",
+            footer: "UI OK",
+            ctx
+        });
+        results.push("✔ UI");
+    } catch {
+        results.push("❌ UI");
+    }
+
+    // ======================
+    // 🧪 TEST HYBRID MODE
+    // ======================
+    try {
+        await engine.sendHybrid(m, {
+            text: "⚡ HYBRID MODE ACTIVE",
+            footer: "Hybrid OK",
+            buttons: [
+                { buttonId: ".ping", buttonText: { displayText: "PING" }},
+                { buttonId: ".menu", buttonText: { displayText: "MENU" }}
+            ],
+            ctx
+        });
+        results.push("✔ HYBRID");
+    } catch {
+        results.push("❌ HYBRID");
+    }
+
+    // ======================
+    // 🧪 TEST CONTEXT PREVIEW
+    // ======================
+    try {
+        await engine.send(m, {
+            text: "📡 CONTEXT PREVIEW TEST",
+            ctx,
+            options: {
+                fakeType: "ftext"
+            }
+        });
+        results.push("✔ CONTEXT");
+    } catch {
+        results.push("❌ CONTEXT");
+    }
+
+    // ======================
+    // 📊 FINAL REPORT
+    // ======================
+    await engine.sendUI(m, {
+        title: "ENGINE DIAGNOSTIC",
+        body: `
+${results.join('\n')}
+
+📊 Total Test: ${results.length}
+🧠 Engine: ACTIVE
+        `,
+        footer: "ShoNhe System Check",
+        ctx
+    });
+}
+break;
+            
+            // =========================================
             // 📌 REPLY MODE COMMANDS
             // =========================================
             case 'replymode':
@@ -854,16 +871,40 @@ Mode sekarang: *${newMode.toUpperCase()}*\n\nSemua reply akan menggunakan mode i
             break;
 
             case 'checkmode': {
-                const mode = getUserMode(m.sender);
-                const stats = getReplyModeStats();
-                return smartReply(`📋 *Reply Mode Info*
+    const mode = getUserMode(m.sender);
+    const stats = getReplyModeStats();
+
+    const text = `📋 *Reply Mode Info*
 
 👤 Mode kamu: *${mode.toUpperCase()}*
 📊 Total user: ${stats.total}
 📋 Mode button: ${stats.button}
-📝 Mode text: ${stats.text}`);
+📝 Mode text: ${stats.text}`;
+
+    const baseKey = {
+        participant: "0@s.whatsapp.net",
+        remoteJid: "status@broadcast"
+    };
+
+    const fkontak = {
+        key: baseKey,
+        message: {
+            contactMessage: {
+                displayName: global.namaowner || name,
+                vcard: `BEGIN:VCARD\nVERSION:3.0\nFN:${global.namaowner || name}\nTEL;waid=${global.numberown}:${global.numberown}\nEND:VCARD`,
+                jpegThumbnail: thumb
             }
-            break;
+        }
+    };
+
+    await conn.sendMessage(m.chat, {
+        text: text
+    }, {
+        quoted: fkontak
+    });
+
+}
+break;
 
             // =========================================
             // 📌 OWNER COMMANDS
@@ -1822,7 +1863,634 @@ ${urlGrup}
             // =========================================
             // 📌 DEFAULT - EVAL & SHELL COMMANDS
             // =========================================
-            default: 
+            
+  
+break;
+
+  
+  case 'supertest': {
+ const engine = createReplyEngine(conn, global);
+
+ const ctx = {
+ name: m.pushName,
+ number: m.sender.split('@')[0],
+ thumb: global.thumb
+ };
+
+ // ======================
+ // 🔄 SYSTEM INIT
+ // ======================
+ await engine.typing(m);
+
+ await engine.send(m, {
+ text: "⚙️ Initializing Engine...",
+ ctx
+ });
+
+ await new Promise(r => setTimeout(r, 500));
+
+ // ======================
+ // 🧱 BASIC TEST
+ // ======================
+ await engine.send(m, {
+ text: "✅ FakeQuoted OK",
+ ctx
+ });
+
+ // ======================
+ // 🎨 UI TEST
+ // ======================
+ await engine.sendUI(m, {
+ title: "UI MODULE",
+ body: "✅ UI System Running",
+ footer: "ShoNhe Engine",
+ ctx
+ });
+
+ // ======================
+ // 🔀 HYBRID TEST
+ // ======================
+ await engine.sendHybrid(m, {
+ text: "✅ Hybrid Mode Active",
+ footer: "ShoNhe Engine",
+ buttons: [
+ { buttonId: ".menu", buttonText: { displayText: "MENU" } }
+ ],
+ ctx
+ });
+
+ // ======================
+ // 📋 LIST UI TEST (REPLACEMENT INTERACTIVE)
+ // ======================
+ await engine.sendListUI(m, {
+ title: "LIST MODULE",
+ body: "✅ Navigation System Ready",
+ footer: "ShoNhe Engine",
+ buttonText: "OPEN MENU",
+ ctx,
+ sections: [
+ {
+ title: "TEST MENU",
+ rows: [
+ {
+ title: "⚡ Ping",
+ description: "Cek performa bot",
+ rowId: ".ping"
+ },
+ {
+ title: "📋 Menu",
+ description: "Lihat semua fitur",
+ rowId: ".menu"
+ }
+ ]
+ }
+ ]
+ });
+
+ // ======================
+ // ✏️ EDIT MESSAGE TEST
+ // ======================
+ const msg = await conn.sendMessage(m.chat, { text: "⏳ Processing..." });
+
+ await new Promise(r => setTimeout(r, 800));
+
+ await engine.editMessage(m, msg.key, "✅ Edit Message OK");
+
+ // ======================
+ // 📡 STATUS TEST
+ // ======================
+ await engine.sendStatus("🚀 ShoNhe Engine Active");
+
+ // ======================
+ // 🧾 FINAL REPORT
+ // ======================
+ await engine.sendUI(m, {
+ title: "ENGINE DIAGNOSTIC",
+ body: `✔ FakeQuoted
+✔ UI
+✔ Hybrid
+✔ List UI
+✔ Edit
+✔ Status
+
+📊 Total Test: 6
+🧠 Engine: ACTIVE`,
+ footer: "ShoNhe System Check",
+ ctx
+ });
+}
+break;
+
+  
+  case 'suptes': {
+ const engine = createReplyEngine(conn, global);
+
+ const ctx = {
+ name: m.pushName,
+ number: m.sender.split('@')[0],
+ thumb: global.thumb
+ };
+
+ // BASIC
+ await engine.send(m, {
+ text: "Engine Normal",
+ ctx
+ });
+
+ // BUTTON
+ await engine.sendHybrid(m, {
+ text: "Menu Button",
+ buttons: [
+ { buttonId: ".menu", buttonText: { displayText: "MENU" } }
+ ],
+ ctx
+ });
+
+ // LIST UI
+ await engine.sendListUI(m, {
+ title: "MAIN MENU",
+ body: "Pilih fitur",
+ ctx,
+ sections: [
+ {
+ title: "MENU",
+ rows: [
+ { title: "Ping", rowId: ".ping" },
+ { title: "Owner", rowId: ".owner" }
+ ]
+ }
+ ]
+ });
+
+ // 🔥 SUPER COMBO (WELCOME STYLE)
+ await engine.sendWelcomeCombo(m, {
+ image: global.thumb,
+ caption: `🔥 Halo ${m.pushName}
+Selamat datang di system ShoNhe`,
+ buttons: [
+ { buttonId: ".menu", buttonText: { displayText: "MENU" } },
+ { buttonId: ".ping", buttonText: { displayText: "PING" } }
+ ],
+ ctx
+ });
+
+ // FINAL REPORT
+ await engine.send(m, {
+ text: `╭───〔 FINAL REPORT 〕───⬣
+✔ BASIC OK
+✔ BUTTON OK
+✔ LIST OK
+✔ COMBO OK
+╰────────────⬣`,
+ ctx
+ });
+}
+break;
+
+  
+  case 'suptes2': {
+ const engine = createReplyEngine(conn, global);
+
+ const ctx = {
+ name: m.pushName || "User",
+ number: m.sender.split('@')[0],
+ thumb: global.thumb
+ };
+
+ await engine.send(m, { text: "🚀 STARTING FULL ENGINE TEST...", ctx });
+
+ // ======================
+ // 🔹 BASIC TEST
+ // ======================
+ await engine.send(m, {
+ text: "✅ BASIC SEND OK",
+ ctx
+ });
+
+ // ======================
+ // 🔹 HYBRID BUTTON TEST
+ // ======================
+ await engine.sendHybrid(m, {
+ text: "🔥 HYBRID BUTTON TEST",
+ footer: "ShoNhe Engine",
+ buttons: [
+ { buttonId: ".menu", buttonText: { displayText: "📜 MENU" } },
+ { buttonId: ".ping", buttonText: { displayText: "🏓 PING" } }
+ ],
+ ctx
+ });
+
+ // ======================
+ // 🔹 LIST UI TEST
+ // ======================
+ await engine.sendListUI(m, {
+ title: "LIST ENGINE",
+ body: "Silahkan pilih menu",
+ footer: "ShoNhe List",
+ buttonText: "OPEN MENU",
+ sections: [
+ {
+ title: "MAIN MENU",
+ rows: [
+ { title: "📜 MENU", rowId: ".menu" },
+ { title: "🏓 PING", rowId: ".ping" }
+ ]
+ },
+ {
+ title: "ADVANCED",
+ rows: [
+ { title: "🤖 AI MENU", rowId: ".aimenu" },
+ { title: "🎮 GAME MENU", rowId: ".gamemenu" }
+ ]
+ }
+ ],
+ ctx
+ });
+
+ // ======================
+ // 🔹 FLOW UI TEST (LEVEL TINGGI)
+ // ======================
+ await engine.sendFlow(m, {
+ text: "🚀 FLOW UI ACTIVE",
+ footer: "ShoNhe Flow",
+ buttonText: "SELECT MENU",
+ flow: {
+ title: "Select Menu!",
+ sections: [
+ {
+ title: "POPULER",
+ rows: [
+ {
+ title: "🛒 STORE MENU",
+ description: "Menu store",
+ id: ".storemenu"
+ }
+ ]
+ },
+ {
+ title: "ALL MENU",
+ rows: [
+ { title: "💻 PANEL", id: ".panel" },
+ { title: "🎮 GAME", id: ".gamemenu" },
+ { title: "🤖 AI", id: ".aimenu" }
+ ]
+ }
+ ]
+ },
+ ctx
+ });
+
+ // ======================
+ // 🔹 WELCOME COMBO TEST (IMAGE)
+ // ======================
+ await engine.sendWelcomeCombo(m, {
+ image: "https://i.ibb.co/997h3mWM/sho-Nhe.jpg",
+ caption: `👋 Halo ${m.pushName}
+
+Selamat datang di sistem ShoNhe 🚀`,
+ footer: "WELCOME SYSTEM",
+ buttons: [
+ { buttonId: ".menu", buttonText: { displayText: "📜 MENU" } },
+ { buttonId: ".register", buttonText: { displayText: "⚡ REGISTER" } }
+ ],
+ ctx
+ });
+
+ // ======================
+ // 🔹 WELCOME COMBO TEST (NO IMAGE / FALLBACK)
+ // ======================
+ await engine.sendWelcomeCombo(m, {
+ caption: "⚠️ IMAGE FAIL TEST (fallback ke text)",
+ footer: "Fallback Test",
+ buttons: [
+ { buttonId: ".ping", buttonText: { displayText: "PING" } }
+ ],
+ ctx
+ });
+
+ // ======================
+ // 🔹 STATUS TEST
+ // ======================
+ await engine.sendStatus("🔥 STATUS: ENGINE ACTIVE");
+
+ // ======================
+ // 🔹 EDGE CASE TEST (NO CTX)
+ // ======================
+ await engine.send(m, {
+ text: "⚠️ TEST TANPA CTX (SHOULD SAFE)"
+ });
+
+ // ======================
+ // 🔹 FINAL REPORT
+ // ======================
+ await engine.send(m, {
+ text: `╭───〔 FINAL REPORT 〕───⬣
+✔ BASIC
+✔ HYBRID
+✔ LIST
+✔ FLOW
+✔ WELCOME IMAGE
+✔ WELCOME FALLBACK
+✔ EDIT
+✔ STATUS
+✔ EDGE SAFE
+
+🧠 ENGINE: STABLE & READY
+╰────────────⬣`,
+ ctx
+ });
+}
+break;
+
+  
+  case 'suptes3': {
+ const engine = createReplyEngine(conn, global);
+
+ const ctx = {
+ name: m.pushName || "User",
+ number: m.sender.split('@')[0],
+ thumb: global.thumb
+ };
+
+ // ======================
+ // 🔹 BOOT SEQUENCE
+ // ======================
+ await engine.send(m, {
+ text: "🚀 STARTING FULL ENGINE COMBO TEST...",
+ ctx
+ });
+
+ // ======================
+ // 🔹 BASIC SEND TEST
+ // ======================
+ await engine.send(m, {
+ text: "✅ BASIC SEND OK",
+ ctx
+ });
+
+ // ======================
+ // 🔹 HYBRID BUTTON CORE TEST
+ // ======================
+ await engine.sendHybrid(m, {
+ text: "🔥 HYBRID BUTTON TEST",
+ footer: "ShoNhe Engine Core",
+ buttons: [
+ { buttonId: ".menu", buttonText: { displayText: "📜 MENU" } },
+ { buttonId: ".ping", buttonText: { displayText: "🏓 PING" } }
+ ],
+ ctx
+ });
+
+ // ======================
+ // 🔹 LIST UI TEST (NAVIGATION LAYER)
+ // ======================
+ await engine.sendListUI(m, {
+ title: "📚 LIST ENGINE",
+ body: "Silahkan pilih menu",
+ footer: "ShoNhe List System",
+ buttonText: "OPEN MENU",
+
+ sections: [
+ {
+ title: "MAIN MENU",
+ rows: [
+ { title: "📜 MENU", rowId: ".menu" },
+ { title: "🏓 PING", rowId: ".ping" }
+ ]
+ },
+ {
+ title: "ADVANCED",
+ rows: [
+ { title: "🤖 AI MENU", rowId: ".aimenu" },
+ { title: "🎮 GAME MENU", rowId: ".gamemenu" }
+ ]
+ }
+ ],
+
+ ctx
+ });
+
+ // ======================
+ // 🔹 FLOW UI TEST (ADVANCED ROUTER)
+ // ======================
+ await engine.sendFlow(m, {
+ text: "🚀 FLOW ENGINE ACTIVE",
+ footer: "ShoNhe Flow System",
+ buttonText: "SELECT MENU",
+
+ flow: {
+ title: "Select Menu",
+ sections: [
+ {
+ title: "POPULER",
+ rows: [
+ {
+ title: "🛒 STORE MENU",
+ description: "Access store system",
+ id: ".storemenu"
+ }
+ ]
+ },
+ {
+ title: "ALL FEATURES",
+ rows: [
+ { title: "💻 PANEL", id: ".panel" },
+ { title: "🎮 GAME", id: ".gamemenu" },
+ { title: "🤖 AI", id: ".aimenu" }
+ ]
+ }
+ ]
+ },
+
+ ctx
+ });
+
+ // ======================
+ // 🔹 WELCOME COMBO (FULL IMAGE MODE)
+ // ======================
+ await engine.sendWelcomeCombo(m, {
+ image: "https://i.ibb.co/997h3mWM/sho-Nhe.jpg",
+
+ caption: `👋 Halo ${m.pushName}
+
+Selamat datang di ShoNhe System 🚀`,
+
+ footer: "WELCOME SYSTEM CORE",
+
+ buttons: [
+ { buttonId: ".menu", buttonText: { displayText: "📜 MENU" } },
+ { buttonId: ".register", buttonText: { displayText: "⚡ REGISTER" } }
+ ],
+
+ ctx
+ });
+
+ // ======================
+ // 🔹 WELCOME COMBO (FALLBACK TEST - NO IMAGE)
+ // ======================
+ await engine.sendWelcomeCombo(m, {
+ caption: "⚠️ FALLBACK TEST ACTIVE (no image mode)",
+ footer: "Fallback System",
+
+ buttons: [
+ { buttonId: ".ping", buttonText: { displayText: "🏓 PING" } }
+ ],
+
+ ctx
+ });
+
+ // ======================
+ // 🔹 EDGE CASE TEST (NO CTX SAFE MODE)
+ // ======================
+ await engine.send(m, {
+ text: "⚠️ EDGE TEST (NO CTX) - SAFE MODE ACTIVE"
+ });
+
+ // ======================
+ // 🔹 STRESS TEST (LIST OVERLOAD)
+ // ======================
+ await engine.sendListUI(m, {
+ title: "⚡ STRESS TEST",
+ body: "Testing heavy payload",
+ footer: "LOAD TEST",
+ buttonText: "OPEN",
+
+ sections: Array.from({ length: 6 }).map((_, i) => ({
+ title: `SECTION ${i + 1}`,
+ rows: Array.from({ length: 4 }).map((_, j) => ({
+ title: `ITEM ${i + 1}.${j + 1}`,
+ rowId: `.test_${i}_${j}`
+ }))
+ })),
+
+ ctx
+ });
+
+ // ======================
+ // 🔹 ROLE SIMULATION TEST
+ // ======================
+ const isOwner = true;
+
+ await engine.sendWelcomeCombo(m, {
+ image: "https://i.ibb.co/997h3mWM/sho-Nhe.jpg",
+
+ caption: isOwner
+ ? `👑 OWNER MODE ACTIVE\n\nHalo ${m.pushName}`
+ : `👤 USER MODE ACTIVE`,
+
+ footer: "ROLE SYSTEM",
+
+ buttons: isOwner
+ ? [
+ { buttonId: ".reload", buttonText: { displayText: "🔄 RELOAD" } },
+ { buttonId: ".shutdown", buttonText: { displayText: "⛔ SHUTDOWN" } }
+ ]
+ : [
+ { buttonId: ".menu", buttonText: { displayText: "📜 MENU" } }
+ ],
+
+ ctx
+ });
+
+ // ======================
+ // 🔹 STATUS REPORT
+ // ======================
+ await engine.sendStatus("🔥 ENGINE STATUS: FULL COMBO ACTIVE");
+
+ // ======================
+ // 🔹 FINAL REPORT
+ // ======================
+ await engine.send(m, {
+ text: `╭───〔 FINAL REPORT 〕───⬣
+✔ BASIC SEND
+✔ HYBRID BUTTON
+✔ LIST UI
+✔ FLOW UI
+✔ WELCOME FULL
+✔ WELCOME FALLBACK
+✔ EDGE SAFE MODE
+✔ STRESS TEST
+✔ ROLE SYSTEM
+
+🧠 ENGINE STATE: STABLE
+⚡ UI SYSTEM: READY FOR PRODUCTION
+╰────────────⬣`
+ });
+
+}
+break;
+
+  
+  case 'suptes4': {
+    const engine = createReplyEngine(conn, global);
+
+    const ctx = {
+        name: m.pushName || "User",
+        number: m.sender.split('@')[0],
+        thumb: global.thumb
+    };
+
+    // ======================
+    // 🔥 HYBRID FLOW COMBO TEST
+    // ======================
+    await engine.sendHybridListCombo(m, {
+        image: "https://i.ibb.co/997h3mWM/sho-Nhe.jpg",
+
+        caption: `👋 Halo ${ctx.name}
+
+Selamat datang di ShoNhe System 🚀
+Silakan pilih menu di bawah.`,
+
+        footer: "WELCOME SYSTEM",
+
+        buttons: [
+            {
+                buttonId: ".menu",
+                buttonText: { displayText: "📜 OPEN MENU" }
+            },
+            {
+                buttonId: ".ping",
+                buttonText: { displayText: "🏓 CHECK BOT" }
+            }
+        ],
+
+        list: {
+            title: "📚 MAIN MENU",
+            body: "Pilih fitur yang ingin digunakan",
+            buttonText: "OPEN MENU",
+
+            sections: [
+                {
+                    title: "MAIN FEATURES",
+                    rows: [
+                        { title: "📜 MENU UTAMA", rowId: ".menu" },
+                        { title: "🏓 PING BOT", rowId: ".ping" }
+                    ]
+                },
+                {
+                    title: "ADVANCED",
+                    rows: [
+                        { title: "🤖 AI MENU", rowId: ".aimenu" },
+                        { title: "🎮 GAME MENU", rowId: ".gamemenu" }
+                    ]
+                },
+                {
+                    title: "SYSTEM",
+                    rows: [
+                        { title: "📊 STATUS", rowId: ".status" },
+                        { title: "⚙️ OWNER MENU", rowId: ".owner" }
+                    ]
+                }
+            ]
+        },
+
+        ctx
+    });
+
+    break;
+}
+
+  default: 
                 if (budy.startsWith('=>') && isOwn) {
                     try {
                         const code = budy.slice(2);

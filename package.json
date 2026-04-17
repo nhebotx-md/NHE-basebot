@@ -21,7 +21,6 @@
     "@babel/plugin-transform-modules-commonjs": "^7.26.3",
     "@hapi/boom": "^10.0.1",
     "@itsukichan/baileys": "latest",
-    "@whiskeysockets/baileys": "latest",
     "awesome-phonenumber": "^7.4.0",
     "axios": "^1.8.4",
     "chalk": "^4.1.2",
