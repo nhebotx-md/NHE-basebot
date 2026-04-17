@@ -12,8 +12,7 @@ basebot-rebuild/
 │
 ├── src/                       # Source code utama
 │   ├── core/                  # Core modules
-│   │    ├── ReplyEngine.js.     # Engine reply
-│   │    └── WhosTANG.js        # Main command handler
+│   │   └── WhosTANG.js        # Main command handler
 │   │
 │   ├── config/                # Konfigurasi
 │   │   └── config.js          # Global config & variables
@@ -29,8 +28,7 @@ basebot-rebuild/
 │   │
 │   ├── lib/                   # Library modules
 │   │   ├── participants.js    # Group participants manager
-│   │   ├── exif.js             # Sticker processing
-│   │   ├── fakequoted.js      # Fake quoted reply
+│   │   ├── exif.js            # Sticker processing
 │   │   ├── uploader.js        # File upload utilities
 │   │   ├── savetube.js        # YouTube downloader
 │   │   ├── replyMode.js       # Reply mode manager
