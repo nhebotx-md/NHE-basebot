@@ -7,6 +7,9 @@ const {
     proto
 } = require("@itsukichan/baileys");
 
+const fetch = require("node-fetch");
+const fs = require("fs");
+
 class ReplyEngine {
     constructor({ conn, globalConfig }) {
         this.conn = conn;
@@ -26,7 +29,7 @@ class ReplyEngine {
     }
 
     // ======================
-    // 🔥 THUMB SAFE (ANTI ERROR)
+    // 🔥 THUMB SAFE (ANTI ERROR + SUPPORT FILE)
     // ======================
     async resolveThumb(input) {
         try {
@@ -35,12 +38,20 @@ class ReplyEngine {
             if (Buffer.isBuffer(input)) return input;
 
             if (typeof input === 'string') {
+
+                // URL
                 if (input.startsWith('http')) {
                     const res = await fetch(input);
                     const buff = await res.arrayBuffer();
                     return Buffer.from(buff);
                 }
 
+                // FILE LOCAL
+                if (fs.existsSync(input)) {
+                    return fs.readFileSync(input);
+                }
+
+                // BASE64
                 if (/^[A-Za-z0-9+/=]+$/.test(input)) {
                     return Buffer.from(input, 'base64');
                 }
@@ -111,17 +122,17 @@ class ReplyEngine {
     }
 
     // ======================
-    // 🔥 CONTEXT BOOST (PREVIEW)
+    // 🔥 CONTEXT BOOST (FIX THUMB BUG)
     // ======================
     buildContextInfo(m, options = {}) {
         return {
-            mentionedJid: [m.sender],
+            mentionedJid: [m.sender || "0@s.whatsapp.net"],
             forwardingScore: 999,
             isForwarded: true,
             externalAdReply: {
                 title: options.title || this.config.botname,
                 body: options.body || "ShoNhe Engine",
-                thumbnailUrl: this.config.thumbnail,
+                thumbnailUrl: this.config.thumb,
                 sourceUrl: "https://github.com",
                 mediaType: 1,
                 renderLargerThumbnail: true
@@ -145,15 +156,16 @@ ${footer || ""}`;
                 name: ctx.name,
                 number: ctx.number,
                 thumb: ctx.thumb,
-                sender: m.sender
+                sender: m.sender || "0@s.whatsapp.net"
             });
 
             const fake = this.buildFake('fkontak', context);
 
-            return this.conn.sendMessage(m.chat, { text }, { quoted: fake });
+            return await this.conn.sendMessage(m.chat, { text }, { quoted: fake });
 
         } catch (err) {
             console.error("[Send Error]", err);
+            return false;
         }
     }
 
@@ -166,12 +178,12 @@ ${footer || ""}`;
                 name: config.ctx?.name,
                 number: config.ctx?.number,
                 thumb: config.ctx?.thumb,
-                sender: m.sender
+                sender: m.sender || "0@s.whatsapp.net"
             });
 
             const fake = this.buildFake('fkontak', ctx);
 
-            return this.conn.sendMessage(m.chat, {
+            return await this.conn.sendMessage(m.chat, {
                 text: config.text,
                 footer: config.footer || "",
                 buttons: config.buttons || [],
@@ -181,6 +193,7 @@ ${footer || ""}`;
 
         } catch (err) {
             console.error("[Hybrid Error]", err);
+            return false;
         }
     }
 
@@ -193,12 +206,12 @@ ${footer || ""}`;
                 name: config.ctx?.name,
                 number: config.ctx?.number,
                 thumb: config.ctx?.thumb,
-                sender: m.sender
+                sender: m.sender || "0@s.whatsapp.net"
             });
 
             const fake = this.buildFake('fkontak', ctx);
 
-            return this.conn.sendMessage(m.chat, {
+            return await this.conn.sendMessage(m.chat, {
                 text: this.formatUI(config),
                 footer: config.footer || "ShoNhe Engine",
                 title: config.title || "MENU",
@@ -209,11 +222,12 @@ ${footer || ""}`;
 
         } catch (err) {
             console.error("[ListUI Error]", err);
+            return false;
         }
     }
 
     // ======================
-    // 🔥 FLOW UI (LEVEL TINGGI)
+    // 🔥 FLOW UI
     // ======================
     async sendFlow(m, config = {}) {
         try {
@@ -221,7 +235,7 @@ ${footer || ""}`;
                 name: config.ctx?.name,
                 number: config.ctx?.number,
                 thumb: config.ctx?.thumb,
-                sender: m.sender
+                sender: m.sender || "0@s.whatsapp.net"
             });
 
             const fake = this.buildFake('fkontak', ctx);
@@ -251,47 +265,44 @@ ${footer || ""}`;
                 }), { quoted: fake });
 
             await this.conn.relayMessage(m.chat, msg.message, { messageId: msg.key.id });
+            return true;
 
         } catch (err) {
             console.error("[Flow Error]", err);
+            return false;
         }
     }
 
     // ======================
-    // 🔥 WELCOME COMBO
+    // 🔥 WELCOME COMBO (FIX TOTAL)
     // ======================
     async sendWelcomeCombo(m, config = {}) {
         try {
-            let imageBuffer = null;
-
-            if (config.image) {
-                try {
-                    const res = await fetch(config.image);
-                    imageBuffer = Buffer.from(await res.arrayBuffer());
-                } catch {
-                    imageBuffer = null;
-                }
-            }
-
             const ctx = await this.buildContext({
                 name: config.ctx?.name,
                 number: config.ctx?.number,
                 thumb: config.ctx?.thumb,
-                sender: m.sender
+                sender: m.sender || "0@s.whatsapp.net"
             });
 
             const fake = this.buildFake('fkontak', ctx);
+
+            let imageBuffer = null;
+
+            if (config.image) {
+                imageBuffer = await this.resolveThumb(config.image);
+            }
 
             const message = {
                 caption: config.caption,
                 footer: config.footer || this.config.botname,
                 buttons: config.buttons || [],
-                headerType: 4,
+                headerType: imageBuffer ? 4 : 1,
                 viewOnce: true,
                 contextInfo: this.buildContextInfo(m, config)
             };
 
-            if (imageBuffer) {
+            if (imageBuffer && imageBuffer.length > 0) {
                 message.image = imageBuffer;
             } else {
                 message.text = config.caption;
@@ -301,35 +312,28 @@ ${footer || ""}`;
 
         } catch (err) {
             console.error("[WelcomeCombo Error]", err);
+            return false;
         }
     }
 
     // ======================
-    // 🔥 HYBRID LIST COMBO (FIX YANG KAMU MAU)
+    // 🔥 HYBRID LIST COMBO
     // ======================
     async sendHybridListCombo(m, config = {}) {
         try {
-
             const ctx = await this.buildContext({
                 name: config.ctx?.name,
                 number: config.ctx?.number,
                 thumb: config.ctx?.thumb,
-                sender: m.sender
+                sender: m.sender || "0@s.whatsapp.net"
             });
 
             const fake = this.buildFake('fkontak', ctx);
 
-            let imageBuffer = null;
+            let imageBuffer = config.image
+                ? await this.resolveThumb(config.image)
+                : null;
 
-            if (config.image) {
-                try {
-                    imageBuffer = await this.resolveThumb(config.image);
-                } catch {
-                    imageBuffer = null;
-                }
-            }
-
-            // 1. WELCOME
             const welcomePayload = {
                 caption: config.caption,
                 footer: config.footer || this.config.botname,
@@ -339,18 +343,19 @@ ${footer || ""}`;
                 contextInfo: this.buildContextInfo(m, config)
             };
 
-            if (imageBuffer) welcomePayload.image = imageBuffer;
-            else welcomePayload.text = config.caption;
+            if (imageBuffer && imageBuffer.length > 0) {
+                welcomePayload.image = imageBuffer;
+            } else {
+                welcomePayload.text = config.caption;
+            }
 
             await this.conn.sendMessage(m.chat, welcomePayload, { quoted: fake });
 
-            // 2. TRANSITION
             await this.conn.sendMessage(m.chat, {
                 text: "⚡ Loading menu system...",
                 contextInfo: this.buildContextInfo(m, config)
             }, { quoted: fake });
 
-            // 3. LIST UI
             await this.conn.sendMessage(m.chat, {
                 text: this.formatUI({
                     title: config.list?.title || "MENU",
@@ -373,11 +378,19 @@ ${footer || ""}`;
     }
 
     async editMessage(m, key, text) {
-        return this.conn.sendMessage(m.chat, { text, edit: key });
+        try {
+            return await this.conn.sendMessage(m.chat, { text, edit: key });
+        } catch {
+            return false;
+        }
     }
 
     async sendStatus(text) {
-        return this.conn.sendMessage("status@broadcast", { text }, { broadcast: true });
+        try {
+            return await this.conn.sendMessage("status@broadcast", { text }, { broadcast: true });
+        } catch {
+            return false;
+        }
     }
 }
 

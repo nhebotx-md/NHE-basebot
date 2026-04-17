@@ -601,33 +601,37 @@ const reply = (teks, opt = {}) => {
         const { createReplyEngine } = require("../core/ReplyEngine");
         const loadPluginsCommand = require("../command/handler");
         const handleData = { 
-            WhosTANG, 
-            text, 
-            args, 
-            isOwn, 
-            isPrem, 
-            isCmd, 
-            command, 
-            reply, 
-            smartReply,
-            conn, 
-            sock,
-            fakeQuoted,
-            quoted, 
-            fetchJson, 
-            randomKarakter, 
-            formatSize, 
-            sleep, 
-            smsg, 
-            isOwner, 
-            isPremium, 
-            isCmd, 
-            prefix, 
-            usedPrefix,
-            getUserMode,
-            m,
-            q
-        };
+    WhosTANG, 
+    text, 
+    args, 
+    isOwn, 
+    isPrem, 
+    isCmd, 
+    command, 
+    reply, 
+    smartReply,
+    conn, 
+    sock,
+    fakeQuoted,
+    quoted, 
+    fetchJson, 
+    randomKarakter, 
+    formatSize, 
+    sleep, 
+    smsg, 
+    isOwner, 
+    isPremium, 
+    isCmd, 
+    prefix, 
+    usedPrefix,
+    getUserMode,
+    m,
+    q,
+
+    // 🔥 FIX UTAMA
+    createReplyEngine,
+    global
+};
 
         if (isCmd) {
             await loadPluginsCommand(m, command, handleData);
@@ -686,6 +690,584 @@ TOTAL FITUR : ${TOTAL}`;
             // =========================================
 // 📌 CONTOH CASE DENGAN FAKE QUOTED
 // =========================================
+case "menulist":
+case "listmenu": {
+    const engine = createReplyEngine(conn, global);
+    
+    const ctx = {
+        name: m.pushName || "User",
+        number: (m.sender || "0@s.whatsapp.net").split('@')[0],
+        thumb: global.thumb
+    };
+
+    await engine.sendListUI(m, {
+        title: "📚 MAIN MENU",
+        body: `Halo ${m.pushName}! 👋\n\nSilakan pilih menu yang tersedia:`,
+        footer: global.botname || "NHE BOT",
+        buttonText: "📋 BUKA MENU",
+        sections: [
+            {
+                title: "🤖 BOT INFO",
+                rows: [
+                    { title: "🏓 Ping Bot", description: "Cek kecepatan respon bot", rowId: ".ping" },
+                    { title: "📊 Runtime", description: "Lihat waktu aktif bot", rowId: ".runtime" },
+                    { title: "📈 Total Fitur", description: "Jumlah semua fitur bot", rowId: ".totalfitur" }
+                ]
+            },
+            {
+                title: "👤 OWNER",
+                rows: [
+                    { title: "👑 Contact Owner", description: "Hubungi owner bot", rowId: ".owner" },
+                    { title: "💎 Premium Info", description: "Info tentang premium", rowId: ".premiuminfo" }
+                ]
+            },
+            {
+                title: "⚙️ SETTINGS",
+                rows: [
+                    { title: "🎨 Reply Mode", description: "Ubah mode reply bot", rowId: ".replymode" },
+                    { title: "🔍 Check Mode", description: "Cek mode reply saat ini", rowId: ".checkmode" }
+                ]
+            }
+        ],
+        ctx
+    });
+}
+break;
+
+// =========================================
+// 📌 CASE: MENU DENGAN HYBRID BUTTON
+// =========================================
+case "menubutton":
+case "buttonmenu": {
+    const engine = createReplyEngine(conn, global);
+    
+    const ctx = {
+        name: m.pushName || "User",
+        number: (m.sender || "0@s.whatsapp.net").split('@')[0],
+        thumb: global.thumb
+    };
+
+    await engine.sendHybrid(m, {
+        text: `🤖 *${global.botname || 'NHE BOT'}*\n\nHalo ${m.pushName}! 👋\nPilih menu di bawah ini:`,
+        footer: "ShoNhe Engine System",
+        buttons: [
+            { buttonId: ".menu", buttonText: { displayText: "📜 MENU UTAMA" } },
+            { buttonId: ".ping", buttonText: { displayText: "🏓 PING" } },
+            { buttonId: ".owner", buttonText: { displayText: "👑 OWNER" } }
+        ],
+        ctx
+    });
+}
+break;
+
+// =========================================
+// 📌 CASE: WELCOME MESSAGE COMBO
+// =========================================
+case "welcomeuser":
+case "greet": {
+    const engine = createReplyEngine(conn, global);
+    
+    const ctx = {
+        name: m.pushName || "User",
+        number: (m.sender || "0@s.whatsapp.net").split('@')[0],
+        thumb: global.thumb
+    };
+
+    // Welcome dengan gambar + button
+    await engine.sendWelcomeCombo(m, {
+        image: global.thumb || "https://i.ibb.co/997h3mWM/sho-Nhe.jpg",
+        caption: `👋 *Selamat Datang ${m.pushName}!*\n\n🤖 Bot Name: *${global.botname || 'NHE BOT'}*\n📱 Version: 1.2.0\n⚡ Engine: ShoNhe System\n\nKetik *.menu* untuk melihat fitur!`,
+        footer: "Welcome System",
+        buttons: [
+            { buttonId: ".menu", buttonText: { displayText: "📜 LIHAT MENU" } },
+            { buttonId: ".help", buttonText: { displayText: "❓ BANTUAN" } }
+        ],
+        ctx
+    });
+}
+break;
+
+// =========================================
+// 📌 CASE: FLOW UI (ADVANCED MENU)
+// =========================================
+case "flowmenu":
+case "advancedmenu": {
+    const engine = createReplyEngine(conn, global);
+    
+    const ctx = {
+        name: m.pushName || "User",
+        number: (m.sender || "0@s.whatsapp.net").split('@')[0],
+        thumb: global.thumb
+    };
+
+    await engine.sendFlow(m, {
+        text: `🚀 *ADVANCED MENU*\n\nHalo ${m.pushName}! Pilih fitur advanced:`,
+        footer: "Advanced System",
+        buttonText: "🎯 PILIH MENU",
+        flow: {
+            title: "Select Menu",
+            sections: [
+                {
+                    title: "🔥 POPULER",
+                    rows: [
+                        { title: "🎵 Music Downloader", description: "Download lagu dari YouTube", id: ".play" },
+                        { title: "📹 Video Downloader", description: "Download video dari sosmed", id: ".aio" }
+                    ]
+                },
+                {
+                    title: "🛠️ TOOLS",
+                    rows: [
+                        { title: "🖼️ HD Photo", description: "Tingkatkan kualitas foto", id: ".remini" },
+                        { title: "🔗 To URL", description: "Upload file ke URL", id: ".tourl" }
+                    ]
+                },
+                {
+                    title: "👥 GROUP",
+                    rows: [
+                        { title: "📢 Tag All", description: "Tag semua member", id: ".tagall" },
+                        { title: "👻 Hide Tag", description: "Tag tersembunyi", id: ".hidetag" }
+                    ]
+                }
+            ]
+        },
+        ctx
+    });
+}
+break;
+
+// =========================================
+// 📌 CASE: HYBRID LIST COMBO (FULL FEATURE)
+// =========================================
+case "fullmenu":
+case "supermenu": {
+    const engine = createReplyEngine(conn, global);
+    
+    const ctx = {
+        name: m.pushName || "User",
+        number: (m.sender || "0@s.whatsapp.net").split('@')[0],
+        thumb: global.thumb
+    };
+
+    await engine.sendHybridListCombo(m, {
+        image: global.thumb || "https://i.ibb.co/997h3mWM/sho-Nhe.jpg",
+        caption: `🤖 *${global.botname || 'NHE BOT'}*\n\n👋 Halo ${m.pushName}!\n\n📊 *Bot Info:*\n▸ Version: 1.2.0\n▸ Runtime: ${runtime(process.uptime())}\n▸ Engine: ShoNhe System\n\nPilih menu di bawah ini ⬇️`,
+        footer: "ShoNhe Engine",
+        buttons: [
+            { buttonId: ".ping", buttonText: { displayText: "🏓 PING" } },
+            { buttonId: ".owner", buttonText: { displayText: "👑 OWNER" } }
+        ],
+        list: {
+            title: "📚 ALL MENU",
+            body: "Pilih kategori menu:",
+            buttonText: "📋 BUKA LIST",
+            sections: [
+                {
+                    title: "🤖 MAIN MENU",
+                    rows: [
+                        { title: "📜 Menu", rowId: ".menu" },
+                        { title: "🏓 Ping", rowId: ".ping" },
+                        { title: "📊 Runtime", rowId: ".runtime" },
+                        { title: "📈 Total Fitur", rowId: ".totalfitur" }
+                    ]
+                },
+                {
+                    title: "🎵 DOWNLOAD",
+                    rows: [
+                        { title: "🎵 Play Music", rowId: ".play" },
+                        { title: "📹 YouTube MP4", rowId: ".ytmp4" },
+                        { title: "🎶 YouTube MP3", rowId: ".ytmp3" },
+                        { title: "🌐 All Sosmed", rowId: ".aio" }
+                    ]
+                },
+                {
+                    title: "🔍 SEARCH",
+                    rows: [
+                        { title: "🔎 YouTube Search", rowId: ".yts" },
+                        { title: "📌 Pinterest", rowId: ".pin" }
+                    ]
+                },
+                {
+                    title: "⚙️ TOOLS",
+                    rows: [
+                        { title: "🖼️ HD Photo", rowId: ".remini" },
+                        { title: "🔗 Upload URL", rowId: ".tourl" },
+                        { title: "🔄 Converter", rowId: ".case2plugin" }
+                    ]
+                }
+            ]
+        },
+        ctx
+    });
+}
+break;
+
+// =========================================
+// 📌 CASE: INFO DENGAN FAKE QUOTED
+// =========================================
+case "botinfo":
+case "infobot": {
+    const engine = createReplyEngine(conn, global);
+    
+    const ctx = {
+        name: m.pushName || "User",
+        number: (m.sender || "0@s.whatsapp.net").split('@')[0],
+        thumb: global.thumb
+    };
+
+    const infoText = `
+🤖 *BOT INFORMATION* 🤖
+
+📛 *Name:* ${global.botname || 'NHE BOT'}
+🔢 *Version:* 1.2.0
+👤 *Owner:* ${global.namaowner || 'Unknown'}
+📱 *Number:* ${global.numberown || '-'}
+
+⏱️ *Runtime:* ${runtime(process.uptime())}
+🖥️ *Platform:* ${process.platform}
+🚀 *Node:* ${process.version}
+
+📊 *Status:* Online ✅
+⚡ *Engine:* ShoNhe System
+    `.trim();
+
+    await engine.send(m, {
+        text: infoText,
+        ctx
+    });
+}
+break;
+
+// =========================================
+// 📌 CASE: PROFILE USER
+// =========================================
+case "profile":
+case "me": {
+    const engine = createReplyEngine(conn, global);
+    
+    const ctx = {
+        name: m.pushName || "User",
+        number: (m.sender || "0@s.whatsapp.net").split('@')[0],
+        thumb: global.thumb
+    };
+
+    const profileText = `
+👤 *YOUR PROFILE*
+
+📝 *Name:* ${m.pushName || 'No Name'}
+📱 *Number:* ${(m.sender || "0@s.whatsapp.net").split('@')[0]}
+🔢 *JID:* ${m.sender}
+
+👑 *Role:* ${isOwner ? 'Owner 👑' : isPremium ? 'Premium 💎' : 'User 👤'}
+📋 *Reply Mode:* ${getUserMode(m.sender).toUpperCase()}
+
+${isGroup ? `👥 *Group:* ${groupName}\n🎭 *Admin:* ${isAdmins ? 'Yes ✅' : 'No ❌'}` : ''}
+    `.trim();
+
+    await engine.sendHybrid(m, {
+        text: profileText,
+        footer: "Profile System",
+        buttons: [
+            { buttonId: ".menu", buttonText: { displayText: "📜 MENU" } },
+            { buttonId: ".replymode", buttonText: { displayText: "🎨 MODE" } }
+        ],
+        ctx
+    });
+}
+break;
+
+// =========================================
+// 📌 CASE: GROUP INFO
+// =========================================
+case "groupinfo":
+case "gcinfo": {
+    if (!isGroup) return reply("❌ Khusus grup!");
+    
+    const engine = createReplyEngine(conn, global);
+    
+    const ctx = {
+        name: m.pushName || "User",
+        number: (m.sender || "0@s.whatsapp.net").split('@')[0],
+        thumb: global.thumb
+    };
+
+    const groupInfoText = `
+👥 *GROUP INFORMATION*
+
+📛 *Name:* ${groupName}
+🆔 *ID:* ${m.chat}
+👤 *Owner:* ${groupOwner ? '@' + groupOwner.split('@')[0] : 'Unknown'}
+👥 *Members:* ${participants.length}
+
+🔐 *Status:* ${groupMetadata.announce ? '🔒 Closed' : '🔓 Open'}
+🤖 *Bot Admin:* ${isBotAdmins ? 'Yes ✅' : 'No ❌'}
+👮 *Your Admin:* ${isAdmins ? 'Yes ✅' : 'No ❌'}
+    `.trim();
+
+    await engine.send(m, {
+        text: groupInfoText,
+        mentions: groupOwner ? [groupOwner] : [],
+        ctx
+    });
+}
+break;
+
+// =========================================
+// 📌 CASE: DONASI
+// =========================================
+case "donasi":
+case "donate": {
+    const engine = createReplyEngine(conn, global);
+    
+    const ctx = {
+        name: m.pushName || "User",
+        number: (m.sender || "0@s.whatsapp.net").split('@')[0],
+        thumb: global.thumb
+    };
+
+    const donasiText = `
+💝 *DONASI & SUPPORT* 💝
+
+Terima kasih telah menggunakan *${global.botname || 'NHE BOT'}*!
+
+Jika Anda ingin mendukung pengembangan bot ini,
+silakan donasi melalui:
+
+💳 *Dana:* ${global.numberown || '628xxxx'}
+💳 *OVO:* ${global.numberown || '628xxxx'}
+💳 *Gopay:* ${global.numberown || '628xxxx'}
+🏦 *QRIS:* Hubungi owner
+
+📞 *Contact Owner:*
+wa.me/${global.numberown || '62881027174423'}
+
+Terima kasih atas dukungannya! 🙏
+    `.trim();
+
+    await engine.sendWelcomeCombo(m, {
+        image: global.thumb,
+        caption: donasiText,
+        footer: "Donation System",
+        buttons: [
+            { buttonId: ".owner", buttonText: { displayText: "👑 HUBUNGI OWNER" } },
+            { buttonId: ".menu", buttonText: { displayText: "📜 MENU" } }
+        ],
+        ctx
+    });
+}
+break;
+
+// =========================================
+// 📌 CASE: CEK PREMIUM
+// =========================================
+case "cekpremium":
+case "premiuminfo": {
+    const engine = createReplyEngine(conn, global);
+    
+    const ctx = {
+        name: m.pushName || "User",
+        number: (m.sender || "0@s.whatsapp.net").split('@')[0],
+        thumb: global.thumb
+    };
+
+    const isPrem = premium.includes(m.sender);
+    
+    const premiumText = `
+💎 *PREMIUM INFO* 💎
+
+👤 *User:* ${m.pushName}
+📱 *Number:* ${(m.sender || "0@s.whatsapp.net").split('@')[0]}
+
+💎 *Status:* ${isPrem ? 'Premium User ✅' : 'Free User 👤'}
+
+${isPrem 
+    ? '🎉 Anda adalah user premium!\n✨ Nikmati semua fitur tanpa batas!' 
+    : `📝 *Keuntungan Premium:*
+▸ Unlimited download
+▸ Akses fitur eksklusif
+▸ Prioritas support
+▸ No cooldown
+
+💬 Hubungi owner untuk upgrade premium!`}
+    `.trim();
+
+    await engine.sendHybrid(m, {
+        text: premiumText,
+        footer: "Premium System",
+        buttons: isPrem 
+            ? [{ buttonId: ".menu", buttonText: { displayText: "📜 MENU" } }]
+            : [{ buttonId: ".owner", buttonText: { displayText: "👑 UPGRADE PREMIUM" } }],
+        ctx
+    });
+}
+break;
+
+// =========================================
+// 📌 CASE: HELP/BANTUAN
+// =========================================
+case "help":
+case "bantuan": {
+    const engine = createReplyEngine(conn, global);
+    
+    const ctx = {
+        name: m.pushName || "User",
+        number: (m.sender || "0@s.whatsapp.net").split('@')[0],
+        thumb: global.thumb
+    };
+
+    const helpText = `
+❓ *BANTUAN & CARA PENGGUNAAN* ❓
+
+*Cara Menggunakan Bot:*
+
+1️⃣ *Command Prefix*
+   Gunakan prefix: *!* , *.* , atau *,*
+   Contoh: *.menu* atau *!ping*
+
+2️⃣ *Reply Mode*
+   ▸ *.setreply button* - Mode tombol
+   ▸ *.setreply text* - Mode teks
+
+3️⃣ *Download*
+   ▸ *.play <judul>* - Download lagu
+   ▸ *.ytmp4 <link>* - Download video
+   ▸ *.aio <link>* - Download sosmed
+
+4️⃣ *Group*
+   ▸ *.tagall* - Tag semua member
+   ▸ *.hidetag* - Tag tersembunyi
+   ▸ *.promote @user* - Jadikan admin
+
+5️⃣ *Lainnya*
+   Ketik *.menu* untuk melihat semua fitur!
+
+📞 *Butuh bantuan?* Hubungi: *.owner*
+    `.trim();
+
+    await engine.sendListUI(m, {
+        title: "❓ BANTUAN",
+        body: helpText,
+        footer: "Help System",
+        buttonText: "📋 MENU LAINNYA",
+        sections: [
+            {
+                title: "🎯 QUICK ACCESS",
+                rows: [
+                    { title: "📜 Menu Utama", description: "Lihat semua fitur", rowId: ".menu" },
+                    { title: "👑 Hubungi Owner", description: "Chat dengan owner", rowId: ".owner" },
+                    { title: "🏓 Cek Bot", description: "Test respon bot", rowId: ".ping" }
+                ]
+            }
+        ],
+        ctx
+    });
+}
+break;
+
+// =========================================
+// 📌 CASE: STICKER INFO
+// =========================================
+case "stickerinfo":
+case "sinfo": {
+    if (!quoted) return reply('❌ Reply sticker yang ingin dicek!');
+    if (!/webp/.test(mime)) return reply('❌ Bukan sticker!');
+    
+    const engine = createReplyEngine(conn, global);
+    
+    const ctx = {
+        name: m.pushName || "User",
+        number: (m.sender || "0@s.whatsapp.net").split('@')[0],
+        thumb: global.thumb
+    };
+
+    const stickerInfo = `
+🖼️ *STICKER INFORMATION*
+
+📦 *Mimetype:* ${mime}
+👤 *From:* ${quoted.sender ? '@' + quoted.sender.split('@')[0] : 'Unknown'}
+💬 *Caption:* ${quoted.text || 'No caption'}
+
+📊 *Size:* ${formatSize(quoted.msg?.fileLength || 0)}
+🎭 *Animated:* ${/animated/.test(mime) ? 'Yes ✅' : 'No ❌'}
+    `.trim();
+
+    await engine.send(m, {
+        text: stickerInfo,
+        mentions: quoted.sender ? [quoted.sender] : [],
+        ctx
+    });
+}
+break;
+
+// =========================================
+// 📌 CASE: AFK (Away From Keyboard)
+// =========================================
+case "afk": {
+    const engine = createReplyEngine(conn, global);
+    
+    const ctx = {
+        name: m.pushName || "User",
+        number: (m.sender || "0@s.whatsapp.net").split('@')[0],
+        thumb: global.thumb
+    };
+
+    const reason = text || "No reason";
+    const timeAfk = new Date().toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' });
+    
+    // Simpan AFK status (bisa disimpan di global atau database)
+    if (!global.afk) global.afk = {};
+    global.afk[m.sender] = {
+        reason: reason,
+        time: timeAfk,
+        timestamp: Date.now()
+    };
+
+    await engine.send(m, {
+        text: `😴 *AFK MODE ON*\n\n👤 *User:* ${m.pushName}\n📝 *Reason:* ${reason}\n⏰ *Time:* ${timeAfk}\n\nPesan akan ditampilkan saat ada yang tag Anda.`,
+        ctx
+    });
+}
+break;
+
+// =========================================
+// 📌 CASE: QUOTES/HARIAN
+// =========================================
+case "quotes":
+case "quote": {
+    const engine = createReplyEngine(conn, global);
+    
+    const ctx = {
+        name: m.pushName || "User",
+        number: (m.sender || "0@s.whatsapp.net").split('@')[0],
+        thumb: global.thumb
+    };
+
+    const quotes = [
+        { text: "Jangan menyerah, karena kesuksesan mungkin sudah dekat.", author: "Unknown" },
+        { text: "Setiap hari adalah kesempatan baru untuk menjadi lebih baik.", author: "Unknown" },
+        { text: "Kerja keras mengalahkan bakat ketika bakat tidak bekerja keras.", author: "Tim Notke" },
+        { text: "Jadilah perubahan yang ingin kamu lihat di dunia.", author: "Mahatma Gandhi" },
+        { text: "Kegagalan adalah awal dari kesuksesan.", author: "Unknown" },
+        { text: "Jangan takut gagal, takutlah untuk tidak mencoba.", author: "Unknown" },
+        { text: "Impian tidak menjadi kenyataan melalui sihir, butuh keringat dan tekad.", author: "Colin Powell" },
+        { text: "Hidup ini singkat, jadikan setiap momen berarti.", author: "Unknown" }
+    ];
+
+    const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
+
+    await engine.sendHybrid(m, {
+        text: `📜 *QUOTE OF THE DAY*\n\n❝ ${randomQuote.text} ❞\n\n— *${randomQuote.author}*`,
+        footer: "Quotes System",
+        buttons: [
+            { buttonId: ".quotes", buttonText: { displayText: "🔄 QUOTE LAIN" } },
+            { buttonId: ".menu", buttonText: { displayText: "📜 MENU" } }
+        ],
+        ctx
+    });
+}
+break;
+
+
+
 
 case 'checkfake': {
     const engine = createReplyEngine(conn, global);
@@ -750,7 +1332,7 @@ case 'checkengine': {
 
     const ctx = {
         name: m.pushName,
-        number: m.sender.split('@')[0],
+        number: (m.sender || "0@s.whatsapp.net").split('@')[0],
         thumb: global.thumb
     };
 
@@ -1873,7 +2455,7 @@ break;
 
  const ctx = {
  name: m.pushName,
- number: m.sender.split('@')[0],
+ number: (m.sender || "0@s.whatsapp.net").split('@')[0],
  thumb: global.thumb
  };
 
@@ -1987,7 +2569,7 @@ break;
 
  const ctx = {
  name: m.pushName,
- number: m.sender.split('@')[0],
+ number: (m.sender || "0@s.whatsapp.net").split('@')[0],
  thumb: global.thumb
  };
 
@@ -2053,7 +2635,7 @@ break;
 
  const ctx = {
  name: m.pushName || "User",
- number: m.sender.split('@')[0],
+ number: (m.sender || "0@s.whatsapp.net").split('@')[0],
  thumb: global.thumb
  };
 
@@ -2208,7 +2790,7 @@ break;
 
  const ctx = {
  name: m.pushName || "User",
- number: m.sender.split('@')[0],
+ number: (m.sender || "0@s.whatsapp.net").split('@')[0],
  thumb: global.thumb
  };
 
@@ -2426,7 +3008,7 @@ break;
 
     const ctx = {
         name: m.pushName || "User",
-        number: m.sender.split('@')[0],
+        number: (m.sender || "0@s.whatsapp.net").split('@')[0],
         thumb: global.thumb
     };
 

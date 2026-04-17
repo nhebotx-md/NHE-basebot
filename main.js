@@ -73,6 +73,7 @@ const {
 } = require('./src/utils/message');
 
 // Import core modules
+const { q, fakeQuoted } = require('./src/lib/fakeQuoted');
 const EventEmitter = require('./src/event/EventEmitter');
 const ConnectionHandler = require('./src/core/ConnectionHandler');
 
