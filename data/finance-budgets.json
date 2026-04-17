@@ -1,0 +1,15 @@
+[
+  {
+    "id": "BGTMO33U2DSU4T",
+    "userId": "628123456789",
+    "category": "makan",
+    "amount": 2000000,
+    "period": "monthly",
+    "startDate": "2026-04-17T16:10:26.320Z",
+    "endDate": null,
+    "alertThreshold": 80,
+    "isActive": true,
+    "createdAt": "2026-04-17T16:10:26.320Z",
+    "notes": ""
+  }
+]

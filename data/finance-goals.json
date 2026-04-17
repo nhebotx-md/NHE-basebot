@@ -1,0 +1,19 @@
+[
+  {
+    "id": "GLMO33U2DTXZX",
+    "userId": "628123456789",
+    "name": "Dana Darurat",
+    "description": "",
+    "targetAmount": 10000000,
+    "currentAmount": 1000000,
+    "deadline": null,
+    "category": "emergency",
+    "priority": "medium",
+    "isActive": true,
+    "isCompleted": false,
+    "completedAt": null,
+    "createdAt": "2026-04-17T16:10:26.321Z",
+    "autoAllocate": false,
+    "allocatePercentage": 0
+  }
+]

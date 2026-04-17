@@ -1,0 +1,80 @@
+[
+  {
+    "id": "TXMO33U2DPEZ3C",
+    "timestamp": "2026-04-17T16:10:26.317Z",
+    "userId": "628123456789",
+    "type": "income",
+    "category": "gaji",
+    "amount": 5000000,
+    "currency": "IDR",
+    "description": "Gaji Bulan April",
+    "metadata": {
+      "source": "whatsapp",
+      "tags": []
+    },
+    "runningBalance": 5000000
+  },
+  {
+    "id": "TXMO33U2DQ9V6E",
+    "timestamp": "2026-04-17T16:10:26.318Z",
+    "userId": "628123456789",
+    "type": "expense",
+    "category": "makan",
+    "amount": 150000,
+    "currency": "IDR",
+    "description": "Makan siang",
+    "metadata": {
+      "source": "whatsapp",
+      "tags": []
+    },
+    "runningBalance": 4850000
+  },
+  {
+    "id": "TXMO33U2DRU2Z7",
+    "timestamp": "2026-04-17T16:10:26.319Z",
+    "userId": "628123456789",
+    "type": "expense",
+    "category": "transport",
+    "amount": 50000,
+    "currency": "IDR",
+    "description": "Gojek ke kantor",
+    "metadata": {
+      "source": "whatsapp",
+      "tags": []
+    },
+    "runningBalance": 4800000
+  },
+  {
+    "id": "TXMO33U2DVE6GG",
+    "timestamp": "2026-04-17T16:10:26.323Z",
+    "userId": "628123456789",
+    "type": "expense",
+    "category": "goal-emergency",
+    "amount": 1000000,
+    "currency": "IDR",
+    "description": "Goal contribution: Dana Darurat",
+    "metadata": {
+      "source": "whatsapp",
+      "tags": [
+        "goal",
+        "emergency"
+      ]
+    },
+    "runningBalance": 3800000
+  },
+  {
+    "id": "TXMO33U2E0SM9E",
+    "timestamp": "2026-04-17T16:10:26.328Z",
+    "userId": "628123456789",
+    "type": "income",
+    "category": "bonus",
+    "amount": 2000000,
+    "currency": "IDR",
+    "description": "Bonus lembur",
+    "metadata": {
+      "source": "whatsapp",
+      "tags": []
+    },
+    "runningBalance": 5800000
+  }
+]

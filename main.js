@@ -27,6 +27,8 @@ console.clear();
 
 // Load konfigurasi global terlebih dahulu
 require('./src/config/config');
+const { initialize } = require('./src/domain/finance');
+   initialize();
 
 
 // Import package.json untuk metadata
