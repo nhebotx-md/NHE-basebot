@@ -5,10 +5,13 @@
  * Command: .finadd <income|expense> <amount> <category> [description]
  * Contoh: .finadd income 5000000 gaji "Gaji Bulan April"
  *         .finadd expense 150000 makan "Lunch di restoran"
+ *
+ * INTEGRASI: Menggunakan ctx.user.number dari middleware
+ * sebagai userId untuk sistem finance.
  */
 
 const handler = async (m, Obj) => {
-    const { text, args, reply, conn, createReplyEngine, global } = Obj;
+    const { text, args, reply, conn, createReplyEngine, global, ctx } = Obj;
 
     try {
         if (!createReplyEngine) {
@@ -16,16 +19,24 @@ const handler = async (m, Obj) => {
         }
 
         const engine = createReplyEngine(conn, global);
-        const sender = m.sender || "0@s.whatsapp.net";
-        const userId = sender.split('@')[0];
 
-        const ctx = {
-            name: m.pushName || "User",
+        // 🔧 INTEGRASI MIDDLEWARE: Gunakan ctx dari middleware
+        // ctx.user.number = nomor WhatsApp user (userId untuk finance)
+        if (!ctx || !ctx.user) {
+            await reply('⚠️ Silakan register terlebih dahulu dengan mengetik .register');
+            return;
+        }
+
+        const userId = ctx.user.number;
+
+        // Build local ctx untuk ReplyEngine
+        const ctx_local = {
+            name: m.pushName || ctx.alias || 'User',
             number: userId,
             thumb: global?.thumb
         };
 
-        // Initialize finance system
+        // Initialize finance system (idempotent - safe to call multiple times)
         const { initFinanceDB, addIncome, addExpense, formatCurrency } = require('../src/domain/finance/engine');
         const { emitFinanceEvent, EVENT_TYPES, setupDefaultListeners } = require('../src/domain/finance/events');
 
@@ -51,12 +62,12 @@ const handler = async (m, Obj) => {
 │  • expense: makan, transport, belanja, tagihan, hiburan, kesehatan, pendidikan, lainnya
 │
 ╰────────────────────╯`,
-                footer: global?.botname || "Finance System",
+                footer: global?.botname || 'Finance System',
                 buttons: [
-                    { buttonId: ".finbalance", buttonText: { displayText: "💰 SALDO" } },
-                    { buttonId: ".finreport", buttonText: { displayText: "📊 LAPORAN" } }
+                    { buttonId: '.finbalance', buttonText: { displayText: '💰 SALDO' } },
+                    { buttonId: '.finreport', buttonText: { displayText: '📊 LAPORAN' } }
                 ],
-                ctx
+                ctx: ctx_local
             });
             return;
         }
@@ -70,27 +81,29 @@ const handler = async (m, Obj) => {
         if (!['income', 'expense'].includes(type)) {
             await engine.send(m, {
                 text: `❌ Tipe harus *income* atau *expense*\n\nContoh:\n.finadd income 5000000 gaji`,
-                ctx
+                ctx: ctx_local
             });
             return;
         }
 
         // Validate amount
         if (isNaN(amount) || amount <= 0) {
-            await engine.send(m, { text: `❌ Jumlah harus angka positif`, ctx });
+            await engine.send(m, { text: `❌ Jumlah harus angka positif`, ctx: ctx_local });
             return;
         }
 
         let result;
 
         if (type === 'income') {
-            result = addIncome(userId, amount, category, description, {
-                chatId: m.chat,
-                messageId: m.key?.id
+            result = addIncome(userId, {
+                amount,
+                category,
+                description,
+                source: 'whatsapp'
             });
 
             if (!result.success) {
-                await engine.send(m, { text: `❌ Error: ${result.errors.join(', ')}`, ctx });
+                await engine.send(m, { text: `❌ Error: ${result.errors.join(', ')}`, ctx: ctx_local });
                 return;
             }
 
@@ -116,23 +129,25 @@ const handler = async (m, Obj) => {
 │  📅 Tanggal: ${new Date(result.transaction.timestamp).toLocaleString('id-ID')}
 │
 ╰────────────────────╯`,
-                footer: global?.botname || "Finance System",
+                footer: global?.botname || 'Finance System',
                 buttons: [
-                    { buttonId: ".finadd income ", buttonText: { displayText: "➕ INCOME LAGI" } },
-                    { buttonId: ".finbalance", buttonText: { displayText: "💰 CEK SALDO" } },
-                    { buttonId: ".finreport", buttonText: { displayText: "📊 LAPORAN" } }
+                    { buttonId: '.finadd income ', buttonText: { displayText: '➕ INCOME LAGI' } },
+                    { buttonId: '.finbalance', buttonText: { displayText: '💰 CEK SALDO' } },
+                    { buttonId: '.finreport', buttonText: { displayText: '📊 LAPORAN' } }
                 ],
-                ctx
+                ctx: ctx_local
             });
 
         } else {
-            result = addExpense(userId, amount, category, description, {
-                chatId: m.chat,
-                messageId: m.key?.id
+            result = addExpense(userId, {
+                amount,
+                category,
+                description,
+                source: 'whatsapp'
             });
 
             if (!result.success) {
-                await engine.send(m, { text: `❌ Error: ${result.errors.join(', ')}`, ctx });
+                await engine.send(m, { text: `❌ Error: ${result.errors.join(', ')}`, ctx: ctx_local });
                 return;
             }
 
@@ -166,13 +181,13 @@ const handler = async (m, Obj) => {
 │  📅 Tanggal: ${new Date(result.transaction.timestamp).toLocaleString('id-ID')}${alertText}
 │
 ╰────────────────────╯`,
-                footer: global?.botname || "Finance System",
+                footer: global?.botname || 'Finance System',
                 buttons: [
-                    { buttonId: ".finadd expense ", buttonText: { displayText: "➖ EXPENSE LAGI" } },
-                    { buttonId: ".finbalance", buttonText: { displayText: "💰 CEK SALDO" } },
-                    { buttonId: ".finreport", buttonText: { displayText: "📊 LAPORAN" } }
+                    { buttonId: '.finadd expense ', buttonText: { displayText: '➖ EXPENSE LAGI' } },
+                    { buttonId: '.finbalance', buttonText: { displayText: '💰 CEK SALDO' } },
+                    { buttonId: '.finreport', buttonText: { displayText: '📊 LAPORAN' } }
                 ],
-                ctx
+                ctx: ctx_local
             });
         }
 

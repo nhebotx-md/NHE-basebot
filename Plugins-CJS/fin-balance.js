@@ -4,10 +4,13 @@
  * =========================================
  * Command: .finbalance
  * Menampilkan saldo, ringkasan bulanan, status budget, dan progress goal
+ *
+ * INTEGRASI: Menggunakan ctx.user.number dari middleware
+ * sebagai userId untuk sistem finance.
  */
 
 const handler = async (m, Obj) => {
-    const { reply, conn, createReplyEngine, global } = Obj;
+    const { reply, conn, createReplyEngine, global, ctx } = Obj;
 
     try {
         if (!createReplyEngine) {
@@ -15,22 +18,29 @@ const handler = async (m, Obj) => {
         }
 
         const engine = createReplyEngine(conn, global);
-        const sender = m.sender || "0@s.whatsapp.net";
-        const userId = sender.split('@')[0];
 
-        const ctx = {
-            name: m.pushName || "User",
+        // 🔧 INTEGRASI MIDDLEWARE: Gunakan ctx dari middleware
+        if (!ctx || !ctx.user) {
+            await reply('⚠️ Silakan register terlebih dahulu dengan mengetik .register');
+            return;
+        }
+
+        const userId = ctx.user.number;
+
+        // Build local ctx untuk ReplyEngine
+        const ctx_local = {
+            name: m.pushName || ctx.alias || 'User',
             number: userId,
             thumb: global?.thumb
         };
 
-        // Initialize and get summary
+        // Initialize dan get summary
         const { initFinanceDB, getQuickSummary, formatCurrency } = require('../src/domain/finance/engine');
         initFinanceDB();
 
         const summary = getQuickSummary(userId);
-        const bal = summary.balance;
-        const monthly = summary.monthly;
+        const bal = summary.balance || 0;
+        const monthly = summary.monthly || { income: 0, expense: 0, net: 0, summary: { income: 0, expense: 0, net: 0, transactionCount: 0 } };
 
         // Build budget status text
         let budgetText = '';
@@ -56,23 +66,27 @@ const handler = async (m, Obj) => {
             goalsText = '│  (Belum ada goal)\n';
         }
 
+        // 🔥 LEVEL INFO dari middleware ctx
+        const levelInfo = ctx ? `│  ⭐ Level: ${ctx.level} (${ctx.xp} XP)\n` : '';
+
         await engine.sendHybrid(m, {
             text: `
 ╭───〔 💰 FINANCE SUMMARY 〕───╮
 │
-│  👤 User: ${ctx.name}
-│  📅 Periode: ${new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
+│  👤 User: ${ctx_local.name}
+│  📱 Nomor: ${userId}
+${levelInfo}│  📅 Periode: ${new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
 │
 ├───〔 SALDO 〕───
-│  💵 Saldo Saat Ini: ${formatCurrency(bal.currentBalance)}
-│  📥 Total Pemasukan: ${formatCurrency(bal.totalIncome)}
-│  📤 Total Pengeluaran: ${formatCurrency(bal.totalExpense)}
-│  📊 Net Flow: ${bal.netFlow >= 0 ? '+' : ''}${formatCurrency(bal.netFlow)}
+│  💵 Saldo Saat Ini: ${formatCurrency(bal)}
+│  📥 Total Pemasukan: ${formatCurrency(summary.totalIncome)}
+│  📤 Total Pengeluaran: ${formatCurrency(summary.totalExpense)}
+│  📊 Net Flow: ${summary.netFlow >= 0 ? '+' : ''}${formatCurrency(summary.netFlow)}
 │
 ├───〔 BULAN INI 〕───
-│  📥 Income: ${formatCurrency(monthly.summary.income)}
-│  📤 Expense: ${formatCurrency(monthly.summary.expense)}
-│  📊 Net: ${monthly.summary.net >= 0 ? '+' : ''}${formatCurrency(monthly.summary.net)}
+│  📥 Income: ${formatCurrency(monthly.income)}
+│  📤 Expense: ${formatCurrency(monthly.expense)}
+│  📊 Net: ${monthly.net >= 0 ? '+' : ''}${formatCurrency(monthly.net)}
 │  📋 Transaksi: ${monthly.summary.transactionCount}
 │
 ├───〔 BUDGET STATUS 〕───
@@ -80,13 +94,13 @@ ${budgetText}
 ├───〔 GOALS PROGRESS 〕───
 ${goalsText}│
 ╰────────────────────╯`,
-            footer: global?.botname || "Finance System",
+            footer: global?.botname || 'Finance System',
             buttons: [
-                { buttonId: ".finadd income ", buttonText: { displayText: "➕ INCOME" } },
-                { buttonId: ".finadd expense ", buttonText: { displayText: "➖ EXPENSE" } },
-                { buttonId: ".finreport", buttonText: { displayText: "📊 DETAIL REPORT" } }
+                { buttonId: '.finadd income ', buttonText: { displayText: '➕ INCOME' } },
+                { buttonId: '.finadd expense ', buttonText: { displayText: '➖ EXPENSE' } },
+                { buttonId: '.finreport', buttonText: { displayText: '📊 DETAIL REPORT' } }
             ],
-            ctx
+            ctx: ctx_local
         });
 
     } catch (err) {

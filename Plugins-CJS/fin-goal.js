@@ -7,10 +7,13 @@
  *  .fingoal list
  *  .fingoal contribute <goal-id> <jumlah>
  *  .fingoal progress
+ *
+ * INTEGRASI: Menggunakan ctx.user.number dari middleware
+ * sebagai userId untuk sistem finance.
  */
 
 const handler = async (m, Obj) => {
-    const { text, args, reply, conn, createReplyEngine, global } = Obj;
+    const { text, args, reply, conn, createReplyEngine, global, ctx } = Obj;
 
     try {
         if (!createReplyEngine) {
@@ -18,11 +21,18 @@ const handler = async (m, Obj) => {
         }
 
         const engine = createReplyEngine(conn, global);
-        const sender = m.sender || "0@s.whatsapp.net";
-        const userId = sender.split('@')[0];
 
-        const ctx = {
-            name: m.pushName || "User",
+        // 🔧 INTEGRASI MIDDLEWARE: Gunakan ctx dari middleware
+        if (!ctx || !ctx.user) {
+            await reply('⚠️ Silakan register terlebih dahulu dengan mengetik .register');
+            return;
+        }
+
+        const userId = ctx.user.number;
+
+        // Build local ctx untuk ReplyEngine
+        const ctx_local = {
+            name: m.pushName || ctx.alias || 'User',
             number: userId,
             thumb: global?.thumb
         };
@@ -60,16 +70,14 @@ const handler = async (m, Obj) => {
 │  .fingoal create "iPhone 16" 25000000 savings 2025-12-31
 │
 ╰────────────────────╯`,
-                    ctx
+                    ctx: ctx_local
                 });
                 return;
             }
 
             // Parse: goal create "Nama Goal" 10000000 savings 2025-12-31
-            // Handle quoted name
             let name, target, category, deadline;
 
-            // Simple parsing: args[1] = name, args[2] = target, args[3] = category, args[4] = deadline
             name = args[1].replace(/"/g, '');
             target = parseFloat(args[2].replace(/[^0-9]/g, ''));
             category = args[3].toLowerCase();
@@ -79,14 +87,14 @@ const handler = async (m, Obj) => {
             if (!validCategories.includes(category)) {
                 await engine.send(m, {
                     text: `❌ Kategori tidak valid. Pilihan: ${validCategories.join(', ')}`,
-                    ctx
+                    ctx: ctx_local
                 });
                 return;
             }
 
             const validation = goals.validateGoal({ userId, name, targetAmount: target, category, deadline });
             if (!validation.valid) {
-                await engine.send(m, { text: `❌ Error: ${validation.errors.join(', ')}`, ctx });
+                await engine.send(m, { text: `❌ Error: ${validation.errors.join(', ')}`, ctx: ctx_local });
                 return;
             }
 
@@ -120,13 +128,13 @@ const handler = async (m, Obj) => {
 │  untuk mulai menabung ke goal ini.
 │
 ╰────────────────────╯`,
-                footer: global?.botname || "Finance System",
+                footer: global?.botname || 'Finance System',
                 buttons: [
-                    { buttonId: `.fingoal contribute ${goal.id} `, buttonText: { displayText: "💰 CONTRIBUTE" } },
-                    { buttonId: ".fingoal progress", buttonText: { displayText: "📊 PROGRESS" } },
-                    { buttonId: ".fingoal list", buttonText: { displayText: "📋 LIST GOAL" } }
+                    { buttonId: `.fingoal contribute ${goal.id} `, buttonText: { displayText: '💰 CONTRIBUTE' } },
+                    { buttonId: '.fingoal progress', buttonText: { displayText: '📊 PROGRESS' } },
+                    { buttonId: '.fingoal list', buttonText: { displayText: '📋 LIST GOAL' } }
                 ],
-                ctx
+                ctx: ctx_local
             });
         }
 
@@ -147,11 +155,11 @@ const handler = async (m, Obj) => {
 │  .fingoal create <nama> <target> <kategori>
 │
 ╰────────────────────╯`,
-                    footer: global?.botname || "Finance System",
+                    footer: global?.botname || 'Finance System',
                     buttons: [
-                        { buttonId: ".fingoal create ", buttonText: { displayText: "➕ BUAT GOAL" } }
+                        { buttonId: '.fingoal create ', buttonText: { displayText: '➕ BUAT GOAL' } }
                     ],
-                    ctx
+                    ctx: ctx_local
                 });
                 return;
             }
@@ -176,12 +184,12 @@ const handler = async (m, Obj) => {
 │  ${userGoals.length} Goal Aktif
 ${goalsText}│
 ╰────────────────────╯`,
-                footer: global?.botname || "Finance System",
+                footer: global?.botname || 'Finance System',
                 buttons: [
-                    { buttonId: ".fingoal create ", buttonText: { displayText: "➕ GOAL BARU" } },
-                    { buttonId: ".fingoal progress", buttonText: { displayText: "📊 PROGRESS" } }
+                    { buttonId: '.fingoal create ', buttonText: { displayText: '➕ GOAL BARU' } },
+                    { buttonId: '.fingoal progress', buttonText: { displayText: '📊 PROGRESS' } }
                 ],
-                ctx
+                ctx: ctx_local
             });
         }
 
@@ -201,7 +209,7 @@ ${goalsText}│
 │  Tips: Goal ID bisa dilihat di .fingoal list
 │
 ╰────────────────────╯`,
-                    ctx
+                    ctx: ctx_local
                 });
                 return;
             }
@@ -210,20 +218,20 @@ ${goalsText}│
             const amount = parseFloat(args[2].replace(/[^0-9]/g, ''));
 
             if (isNaN(amount) || amount <= 0) {
-                await engine.send(m, { text: `❌ Jumlah tidak valid`, ctx });
+                await engine.send(m, { text: `❌ Jumlah tidak valid`, ctx: ctx_local });
                 return;
             }
 
             const goal = goals.getGoal(goalId);
             if (!goal || goal.userId !== userId) {
-                await engine.send(m, { text: `❌ Goal tidak ditemukan. Cek dengan .fingoal list`, ctx });
+                await engine.send(m, { text: `❌ Goal tidak ditemukan. Cek dengan .fingoal list`, ctx: ctx_local });
                 return;
             }
 
             const result = goals.contributeToGoal(goalId, amount);
 
             if (!result.success) {
-                await engine.send(m, { text: `❌ Gagal: ${result.error}`, ctx });
+                await engine.send(m, { text: `❌ Gagal: ${result.error}`, ctx: ctx_local });
                 return;
             }
 
@@ -251,12 +259,12 @@ ${goalsText}│
 │  🎯 Target: ${formatCurrency(result.goal.targetAmount)}
 │  ${progress.isCompleted ? '\n│  🎉 GOAL TERCAPAI! SELAMAT!\n│' : `│  📌 Sisa: ${formatCurrency(result.remaining)}\n│`}
 ╰────────────────────╯`,
-                footer: global?.botname || "Finance System",
+                footer: global?.botname || 'Finance System',
                 buttons: [
-                    { buttonId: `.fingoal contribute ${goalId} `, buttonText: { displayText: "💰 CONTRIBUTE LAGI" } },
-                    { buttonId: ".fingoal progress", buttonText: { displayText: "📊 SEMUA PROGRESS" } }
+                    { buttonId: `.fingoal contribute ${goalId} `, buttonText: { displayText: '💰 CONTRIBUTE LAGI' } },
+                    { buttonId: '.fingoal progress', buttonText: { displayText: '📊 SEMUA PROGRESS' } }
                 ],
-                ctx
+                ctx: ctx_local
             });
         }
 
@@ -269,7 +277,7 @@ ${goalsText}│
             if (allProgress.length === 0) {
                 await engine.send(m, {
                     text: `Belum ada goal. Buat dengan .fingoal create`,
-                    ctx
+                    ctx: ctx_local
                 });
                 return;
             }
@@ -294,7 +302,7 @@ ${goalsText}│
 ╭───〔 📊 GOALS PROGRESS 〕───╮
 ${progressText}│
 ╰────────────────────╯`,
-                ctx
+                ctx: ctx_local
             });
         }
 
@@ -314,7 +322,7 @@ ${progressText}│
 │  .fingoal progress
 │
 ╰────────────────────╯`,
-                ctx
+                ctx: ctx_local
             });
         }
 

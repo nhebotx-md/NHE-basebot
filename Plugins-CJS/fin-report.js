@@ -4,10 +4,13 @@
  * =========================================
  * Command: .finreport [period]
  * Menampilkan laporan keuangan detail dengan analitik
+ *
+ * INTEGRASI: Menggunakan ctx.user.number dari middleware
+ * sebagai userId untuk sistem finance.
  */
 
 const handler = async (m, Obj) => {
-    const { text, args, reply, conn, createReplyEngine, global } = Obj;
+    const { text, args, reply, conn, createReplyEngine, global, ctx } = Obj;
 
     try {
         if (!createReplyEngine) {
@@ -15,11 +18,18 @@ const handler = async (m, Obj) => {
         }
 
         const engine = createReplyEngine(conn, global);
-        const sender = m.sender || "0@s.whatsapp.net";
-        const userId = sender.split('@')[0];
 
-        const ctx = {
-            name: m.pushName || "User",
+        // 🔧 INTEGRASI MIDDLEWARE: Gunakan ctx dari middleware
+        if (!ctx || !ctx.user) {
+            await reply('⚠️ Silakan register terlebih dahulu dengan mengetik .register');
+            return;
+        }
+
+        const userId = ctx.user.number;
+
+        // Build local ctx untuk ReplyEngine
+        const ctx_local = {
+            name: m.pushName || ctx.alias || 'User',
             number: userId,
             thumb: global?.thumb
         };
@@ -41,7 +51,7 @@ const handler = async (m, Obj) => {
             year: 'Tahun Ini'
         };
 
-        // Initialize and generate report
+        // Initialize dan generate report
         const { initFinanceDB, formatCurrency } = require('../src/domain/finance/engine');
         const { analytics } = require('../src/domain/finance/engine');
         initFinanceDB();
@@ -52,7 +62,6 @@ const handler = async (m, Obj) => {
         let categoryText = '';
         if (report.periodReport.categoryBreakdown && Object.keys(report.periodReport.categoryBreakdown).length > 0) {
             for (const [cat, data] of Object.entries(report.periodReport.categoryBreakdown)) {
-                const net = data.income - data.expense;
                 categoryText += `│  • ${cat}: ${formatCurrency(data.income)} in / ${formatCurrency(data.expense)} out\n`;
             }
         } else {
@@ -89,7 +98,7 @@ const handler = async (m, Obj) => {
             text: `
 ╭───〔 📊 FINANCIAL REPORT 〕───╮
 │
-│  👤 ${ctx.name} | 📅 ${periodLabels[period]}
+│  👤 ${ctx_local.name} | 📅 ${periodLabels[period]}
 │  🏥 Kesehatan Keuangan: ${healthEmoji[report.financialHealth.status] || '➖'} ${report.financialHealth.score}/100
 │
 ├───〔 RINGKASAN 〕───
@@ -107,14 +116,14 @@ ${categoryText}${topSpendText ? `
 ${topSpendText}` : ''}${anomalyText}
 │
 ╰────────────────────╯`,
-            footer: global?.botname || "Finance System",
+            footer: global?.botname || 'Finance System',
             buttons: [
-                { buttonId: ".finbalance", buttonText: { displayText: "💰 SALDO" } },
-                { buttonId: ".finreport today", buttonText: { displayText: "📅 HARI INI" } },
-                { buttonId: ".finreport week", buttonText: { displayText: "📅 MINGGU INI" } },
-                { buttonId: ".fingoal", buttonText: { displayText: "🎯 GOALS" } }
+                { buttonId: '.finbalance', buttonText: { displayText: '💰 SALDO' } },
+                { buttonId: '.finreport today', buttonText: { displayText: '📅 HARI INI' } },
+                { buttonId: '.finreport week', buttonText: { displayText: '📅 MINGGU INI' } },
+                { buttonId: '.fingoal', buttonText: { displayText: '🎯 GOALS' } }
             ],
-            ctx
+            ctx: ctx_local
         });
 
         // If monthly report, also send comparison chart info
@@ -128,7 +137,7 @@ ${topSpendText}` : ''}${anomalyText}
 
             await engine.send(m, {
                 text: `╭───〔 📈 TREN 3 BULAN 〕───╮${comparisonText}╰────────────────────╯`,
-                ctx
+                ctx: ctx_local
             });
         }
 

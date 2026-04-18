@@ -1,12 +1,33 @@
 /**
  * =========================================
- * FINANCE DOMAIN — Entry Point
+ * FINANCE DOMAIN — Entry Point (v2.0.0)
  * =========================================
- * Entry point untuk modul finance.
- * Export semua modul dan fungsi inisialisasi.
+ * Entry point untuk modul finance terisolasi.
+ * Semua finance data tersimpan terpisah dari global.db.
+ *
+ * ARCHITECTURE:
+ * - storage.js    → Isolated persistence layer
+ * - wallet.js     → Derived balance calculation
+ * - ledger.js     → Append-only transaction record
+ * - budget.js     → Budget management
+ * - goals.js      → Financial goals
+ * - analytics.js  → Reports & insights
+ * - engine.js     → Orchestrator & unified API
+ * - events.js     → Event-driven architecture
+ *
+ * INTEGRASI MIDDLEWARE:
+ * - Gunakan ctx.user.number sebagai userId
+ * - Jangan akses global.db langsung dari finance
+ * =========================================
  */
 
 const engine = require('./engine');
+const storage = require('./storage');
+const wallet = require('./wallet');
+const ledger = require('./ledger');
+const budget = require('./budget');
+const goals = require('./goals');
+const analytics = require('./analytics');
 const events = require('./events');
 
 // =========================================
@@ -15,7 +36,7 @@ const events = require('./events');
 const initialize = () => {
     engine.initFinanceDB();
     events.setupDefaultListeners();
-    console.log('[FinanceDomain] Finance system initialized and ready');
+    console.log('[FinanceDomain] Finance domain initialized (isolated v2.0.0)');
 };
 
 // =========================================
@@ -25,7 +46,7 @@ module.exports = {
     // Initialization
     initialize,
 
-    // Main engine
+    // Main engine (unified API)
     engine: {
         initFinanceDB: engine.initFinanceDB,
         addIncome: engine.addIncome,
@@ -36,15 +57,44 @@ module.exports = {
         ledger: engine.ledger,
         budget: engine.budget,
         goals: engine.goals,
-        analytics: engine.analytics
+        analytics: engine.analytics,
+        wallet: engine.wallet,
+        events: engine.events
+    },
+
+    // Storage (isolated persistence)
+    storage: {
+        init: storage.initStorage,
+        saveAll: storage.saveAll,
+        getFinanceMeta: storage.getFinanceMeta,
+        getLedger: storage.getLedger,
+        getBudgets: storage.getBudgets,
+        getGoals: storage.getGoals
+    },
+
+    // Wallet (derived balance)
+    wallet: {
+        calculateBalance: wallet.calculateBalance,
+        getWalletSummary: wallet.getWalletSummary,
+        getTotalIncome: wallet.getTotalIncome,
+        getTotalExpense: wallet.getTotalExpense,
+        getNetFlow: wallet.getNetFlow,
+        formatRupiah: wallet.formatRupiah,
+        formatSigned: wallet.formatSigned
     },
 
     // Events
     events: {
-        financeEventEmitter: events.financeEventEmitter,
         EVENT_TYPES: events.EVENT_TYPES,
-        emitFinanceEvent: events.emitFinanceEvent,
-        onFinanceEvent: events.onFinanceEvent,
+        emit: events.emitFinanceEvent,
+        on: events.onFinanceEvent,
+        once: events.onceFinanceEvent,
         setupDefaultListeners: events.setupDefaultListeners
-    }
+    },
+
+    // Direct module access (untuk advanced usage)
+    ledgerModule: ledger,
+    budgetModule: budget,
+    goalsModule: goals,
+    analyticsModule: analytics
 };
