@@ -1,141 +1,131 @@
 /**
  * =========================================
- * WALLET MODULE — Derived Balance Calculation
+ * WALLET.JS — Balance & Wallet Operations (MongoDB/Mongoose)
  * =========================================
- * Sistem wallet yang SELALU menghitung saldo dari ledger.
- * TIDAK ADA penyimpanan balance manual.
+ * Sistem wallet yang SELALU menghitung saldo dari MongoDB aggregation.
+ * TIDAK ADA penyimpanan balance manual — semua derived calculation.
  *
  * RULES:
- * - Balance = derived dari ledger (running calculation)
- * - Tidak boleh ada field 'balance' yang disimpan di file
+ * - Balance = derived dari FinanceLedger aggregation
+ * - Tidak boleh ada field 'balance' yang disimpan di database
  * - Semua perhitungan real-time dari transaction history
  * - User identity menggunakan userId (dari ctx.user.number)
  */
 
-const { getLedger } = require('./storage');
+const FinanceLedger = require('../../models/FinanceLedger');
+const { connectMongo } = require('../../lib/mongo');
 
 // =========================================
 // CORE: Balance Calculation
 // =========================================
 
 /**
- * Calculate current balance for a user from ledger
- * Semua transaksi user dijumlahkan: income (+), expense (-)
- *
- * @param {string} userId - User ID (phone number dari ctx.user.number)
- * @returns {number} Current balance
+ * Calculate current balance untuk user dari aggregation
+ * @param {string} userId — ctx.user.number
+ * @returns {Promise<number>} Current balance
  */
-const calculateBalance = (userId) => {
-    const ledger = getLedger();
-    const userTxs = ledger.filter(tx => tx.userId === userId);
-
-    if (userTxs.length === 0) return 0;
-
-    // Use running balance from the last transaction (most accurate)
-    const lastTx = userTxs[userTxs.length - 1];
-    return lastTx.runningBalance || 0;
-};
-
-/**
- * Calculate balance at a specific point in time
- * @param {string} userId - User ID
- * @param {string} timestamp - ISO timestamp
- * @returns {number} Balance at that time
- */
-const calculateBalanceAt = (userId, timestamp) => {
-    const ledger = getLedger();
-    const userTxs = ledger.filter(tx =>
-        tx.userId === userId &&
-        tx.timestamp <= timestamp
-    );
-
-    if (userTxs.length === 0) return 0;
-    return userTxs[userTxs.length - 1].runningBalance || 0;
-};
+async function calculateBalance(userId) {
+    await connectMongo();
+    const result = await FinanceLedger.getBalance(userId);
+    return result.balance;
+}
 
 // =========================================
 // CORE: Income & Expense Summary
 // =========================================
 
 /**
- * Get total income for user
- * @param {string} userId - User ID
- * @param {Object} options - Filter options (startDate, endDate)
- * @returns {number} Total income
+ * Get total income untuk user
+ * @param {string} userId — ctx.user.number
+ * @param {Object} options — { startDate, endDate }
+ * @returns {Promise<number>} Total income
  */
-const getTotalIncome = (userId, options = {}) => {
-    const ledger = getLedger();
-    let txs = ledger.filter(tx => tx.userId === userId && tx.type === 'income');
+async function getTotalIncome(userId, options = {}) {
+    await connectMongo();
 
-    if (options.startDate) {
-        txs = txs.filter(tx => tx.timestamp >= options.startDate);
-    }
-    if (options.endDate) {
-        txs = txs.filter(tx => tx.timestamp <= options.endDate);
+    const matchStage = { userId, type: 'income' };
+
+    if (options.startDate || options.endDate) {
+        matchStage.createdAt = {};
+        if (options.startDate) matchStage.createdAt.$gte = new Date(options.startDate);
+        if (options.endDate) matchStage.createdAt.$lte = new Date(options.endDate);
     }
 
-    return txs.reduce((sum, tx) => sum + tx.amount, 0);
-};
+    const result = await FinanceLedger.aggregate([
+        { $match: matchStage },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]).exec();
+
+    return result.length > 0 ? result[0].total : 0;
+}
 
 /**
- * Get total expense for user
- * @param {string} userId - User ID
- * @param {Object} options - Filter options (startDate, endDate)
- * @returns {number} Total expense
+ * Get total expense untuk user
+ * @param {string} userId — ctx.user.number
+ * @param {Object} options — { startDate, endDate }
+ * @returns {Promise<number>} Total expense
  */
-const getTotalExpense = (userId, options = {}) => {
-    const ledger = getLedger();
-    let txs = ledger.filter(tx => tx.userId === userId && tx.type === 'expense');
+async function getTotalExpense(userId, options = {}) {
+    await connectMongo();
 
-    if (options.startDate) {
-        txs = txs.filter(tx => tx.timestamp >= options.startDate);
-    }
-    if (options.endDate) {
-        txs = txs.filter(tx => tx.timestamp <= options.endDate);
+    const matchStage = { userId, type: 'expense' };
+
+    if (options.startDate || options.endDate) {
+        matchStage.createdAt = {};
+        if (options.startDate) matchStage.createdAt.$gte = new Date(options.startDate);
+        if (options.endDate) matchStage.createdAt.$lte = new Date(options.endDate);
     }
 
-    return txs.reduce((sum, tx) => sum + tx.amount, 0);
-};
+    const result = await FinanceLedger.aggregate([
+        { $match: matchStage },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]).exec();
+
+    return result.length > 0 ? result[0].total : 0;
+}
 
 /**
  * Get net flow (income - expense)
- * @param {string} userId - User ID
- * @param {Object} options - Filter options
- * @returns {number} Net flow (positive = surplus, negative = deficit)
+ * @param {string} userId — ctx.user.number
+ * @param {Object} options — { startDate, endDate }
+ * @returns {Promise<number>}
  */
-const getNetFlow = (userId, options = {}) => {
-    return getTotalIncome(userId, options) - getTotalExpense(userId, options);
-};
+async function getNetFlow(userId, options = {}) {
+    const [income, expense] = await Promise.all([
+        getTotalIncome(userId, options),
+        getTotalExpense(userId, options)
+    ]);
+    return income - expense;
+}
 
 // =========================================
 // CORE: Wallet Summary
 // =========================================
 
 /**
- * Get complete wallet summary for a user
- * @param {string} userId - User ID
- * @returns {Object} Wallet summary
+ * Get complete wallet summary untuk user
+ * @param {string} userId — ctx.user.number
+ * @returns {Promise<Object>} Wallet summary
  */
-const getWalletSummary = (userId) => {
-    const balance = calculateBalance(userId);
-    const totalIncome = getTotalIncome(userId);
-    const totalExpense = getTotalExpense(userId);
-    const netFlow = totalIncome - totalExpense;
+async function getWalletSummary(userId) {
+    const balanceData = await FinanceLedger.getBalance(userId);
 
     // This month
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
 
-    const monthlyIncome = getTotalIncome(userId, { startDate: monthStart, endDate: monthEnd });
-    const monthlyExpense = getTotalExpense(userId, { startDate: monthStart, endDate: monthEnd });
+    const [monthlyIncome, monthlyExpense] = await Promise.all([
+        getTotalIncome(userId, { startDate: monthStart, endDate: monthEnd }),
+        getTotalExpense(userId, { startDate: monthStart, endDate: monthEnd })
+    ]);
 
     return {
         userId,
-        balance,
-        totalIncome,
-        totalExpense,
-        netFlow,
+        balance: balanceData.balance,
+        totalIncome: balanceData.totalIncome,
+        totalExpense: balanceData.totalExpense,
+        netFlow: balanceData.totalIncome - balanceData.totalExpense,
         monthly: {
             income: monthlyIncome,
             expense: monthlyExpense,
@@ -143,69 +133,41 @@ const getWalletSummary = (userId) => {
         },
         currency: 'IDR'
     };
-};
+}
 
 // =========================================
 // CORE: Format Utilities
 // =========================================
 
 /**
- * Format number to Rupiah
- * @param {number} amount - Amount to format
- * @returns {string} Formatted currency
+ * Format number ke Rupiah
+ * @param {number} amount
+ * @returns {string} Rp xxx.xxx
  */
-const formatRupiah = (amount) => {
+function formatRupiah(amount) {
     const abs = Math.abs(Math.round(amount));
     const formatted = abs.toLocaleString('id-ID');
     return amount < 0 ? `-Rp ${formatted}` : `Rp ${formatted}`;
-};
+}
 
 /**
- * Format with sign
- * @param {number} amount - Amount to format
- * @returns {string} Formatted with + or - sign
+ * Format dengan sign (+/-)
+ * @param {number} amount
+ * @returns {string}
  */
-const formatSigned = (amount) => {
+function formatSigned(amount) {
     const formatted = formatRupiah(Math.abs(amount));
     if (amount > 0) return `+${formatted}`;
     if (amount < 0) return `-${formatted}`;
     return formatted;
-};
+}
 
 // =========================================
-// CORE: Transaction Counting
-// =========================================
-
-/**
- * Get transaction count for user
- * @param {string} userId - User ID
- * @param {Object} options - Filter options
- * @returns {number} Transaction count
- */
-const getTransactionCount = (userId, options = {}) => {
-    const ledger = getLedger();
-    let txs = ledger.filter(tx => tx.userId === userId);
-
-    if (options.type) {
-        txs = txs.filter(tx => tx.type === options.type);
-    }
-    if (options.startDate) {
-        txs = txs.filter(tx => tx.timestamp >= options.startDate);
-    }
-    if (options.endDate) {
-        txs = txs.filter(tx => tx.timestamp <= options.endDate);
-    }
-
-    return txs.length;
-};
-
-// =========================================
-// EXPORTS
+// EXPORT
 // =========================================
 module.exports = {
-    // Balance calculation (derived - no manual storage)
+    // Balance calculation (derived — no manual storage)
     calculateBalance,
-    calculateBalanceAt,
 
     // Income/Expense
     getTotalIncome,
@@ -214,9 +176,6 @@ module.exports = {
 
     // Summary
     getWalletSummary,
-
-    // Counting
-    getTransactionCount,
 
     // Formatting
     formatRupiah,

@@ -1,3 +1,10 @@
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[UNHANDLED REJECTION]', reason);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('[UNCAUGHT EXCEPTION]', err);
+});
 /**
  * =========================================
  * 📌 FILE: src/core/WhosTANG.js (MODIFIED)

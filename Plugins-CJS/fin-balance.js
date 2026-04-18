@@ -5,8 +5,11 @@
  * Command: .finbalance
  * Menampilkan saldo, ringkasan bulanan, status budget, dan progress goal
  *
- * INTEGRASI: Menggunakan ctx.user.number dari middleware
- * sebagai userId untuk sistem finance.
+ * INTEGRASI:
+ * - Menggunakan ctx.user.number dari middleware
+ * - Aman terhadap missing summary field
+ * - Tidak merusak logika engine utama
+ * =========================================
  */
 
 const handler = async (m, Obj) => {
@@ -19,75 +22,152 @@ const handler = async (m, Obj) => {
 
         const engine = createReplyEngine(conn, global);
 
-        // 🔧 INTEGRASI MIDDLEWARE: Gunakan ctx dari middleware
+        // =========================================
+        // VALIDASI CTX
+        // =========================================
         if (!ctx || !ctx.user) {
             await reply('⚠️ Silakan register terlebih dahulu dengan mengetik .register');
             return;
         }
 
-        const userId = ctx.user.number;
+        const userId = String(ctx?.user?.number || '').trim();
 
-        // Build local ctx untuk ReplyEngine
+        if (!userId) {
+            await reply('❌ User identity tidak valid. Silakan login ulang.');
+            return;
+        }
+
+        // =========================================
+        // LOCAL CONTEXT
+        // =========================================
         const ctx_local = {
             name: m.pushName || ctx.alias || 'User',
             number: userId,
-            thumb: global?.thumb
+            thumb: global?.thumb || null
         };
 
-        // Initialize dan get summary
-        const { initFinanceDB, getQuickSummary, formatCurrency } = require('../src/domain/finance/engine');
+        // =========================================
+        // ENGINE INIT
+        // =========================================
+        const {
+            initFinanceDB,
+            getQuickSummary,
+            formatCurrency
+        } = require('../src/domain/finance/engine');
+
         initFinanceDB();
 
-        const summary = getQuickSummary(userId);
-        const bal = summary.balance || 0;
-        const monthly = summary.monthly || { income: 0, expense: 0, net: 0, summary: { income: 0, expense: 0, net: 0, transactionCount: 0 } };
+        // =========================================
+        // SUMMARY SAFE FETCH
+        // =========================================
+        const summaryRaw = await getQuickSummary(userId);
 
-        // Build budget status text
+        const summary = summaryRaw || {};
+
+        const balance = Number(summary.balance || 0);
+        const totalIncome = Number(summary.totalIncome || 0);
+        const totalExpense = Number(summary.totalExpense || 0);
+        const netFlow = Number(summary.netFlow || 0);
+
+        const monthly = summary.monthly || {};
+        const monthlyIncome = Number(monthly.income || 0);
+        const monthlyExpense = Number(monthly.expense || 0);
+        const monthlyNet = Number(monthly.net || 0);
+        const monthlyTxCount = Number(monthly?.summary?.transactionCount || 0);
+
+        const budgets = Array.isArray(summary.budgets)
+            ? summary.budgets
+            : [];
+
+        const goals = Array.isArray(summary.goals)
+            ? summary.goals
+            : [];
+
+        // =========================================
+        // BUDGET TEXT
+        // =========================================
         let budgetText = '';
-        if (summary.budgets && summary.budgets.length > 0) {
-            for (const b of summary.budgets) {
-                const bar = generateProgressBar(b.percentage, 10);
-                const status = b.isOverBudget ? '🔴' : b.isNearLimit ? '🟡' : '🟢';
-                budgetText += `│  ${status} ${b.budget.category}: ${formatCurrency(b.spent)}/${formatCurrency(b.budget.amount)} ${bar}\n`;
+
+        if (budgets.length > 0) {
+            for (const b of budgets) {
+                const percentage = Number(b?.percentage || 0);
+                const spent = Number(b?.spent || 0);
+                const limit = Number(b?.budget?.amount || 0);
+                const category = b?.budget?.category || 'unknown';
+
+                const bar = generateProgressBar(percentage, 10);
+
+                const status = b?.isOverBudget
+                    ? '🔴'
+                    : b?.isNearLimit
+                        ? '🟡'
+                        : '🟢';
+
+                budgetText +=
+                    `│  ${status} ${category}: ${formatCurrency(spent)}/${formatCurrency(limit)} ${bar}\n`;
             }
         } else {
             budgetText = '│  (Belum ada budget)\n';
         }
 
-        // Build goals text
+        // =========================================
+        // GOALS TEXT
+        // =========================================
         let goalsText = '';
-        if (summary.goals && summary.goals.length > 0) {
-            for (const g of summary.goals) {
-                const bar = generateProgressBar(g.percentage, 8);
-                const icon = g.isCompleted ? '✅' : g.status === 'near-completion' ? '🏁' : '🎯';
-                goalsText += `│  ${icon} ${g.goal.name}: ${Math.round(g.percentage)}% ${bar}\n`;
+
+        if (goals.length > 0) {
+            for (const g of goals) {
+                const percentage = Number(g?.percentage || 0);
+                const goalName = g?.goal?.name || 'Unnamed Goal';
+
+                const bar = generateProgressBar(percentage, 8);
+
+                const icon = g?.isCompleted
+                    ? '✅'
+                    : g?.status === 'near-completion'
+                        ? '🏁'
+                        : '🎯';
+
+                goalsText +=
+                    `│  ${icon} ${goalName}: ${Math.round(percentage)}% ${bar}\n`;
             }
         } else {
             goalsText = '│  (Belum ada goal)\n';
         }
 
-        // 🔥 LEVEL INFO dari middleware ctx
-        const levelInfo = ctx ? `│  ⭐ Level: ${ctx.level} (${ctx.xp} XP)\n` : '';
+        // =========================================
+        // LEVEL INFO SAFE
+        // =========================================
+        const levelInfo =
+            typeof ctx?.level !== 'undefined'
+                ? `│  ⭐ Level: ${ctx.level || 0} (${ctx.xp || 0} XP)\n`
+                : '';
 
+        // =========================================
+        // SEND OUTPUT
+        // =========================================
         await engine.sendHybrid(m, {
             text: `
 ╭───〔 💰 FINANCE SUMMARY 〕───╮
 │
 │  👤 User: ${ctx_local.name}
 │  📱 Nomor: ${userId}
-${levelInfo}│  📅 Periode: ${new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
+${levelInfo}│  📅 Periode: ${new Date().toLocaleDateString('id-ID', {
+                month: 'long',
+                year: 'numeric'
+            })}
 │
 ├───〔 SALDO 〕───
-│  💵 Saldo Saat Ini: ${formatCurrency(bal)}
-│  📥 Total Pemasukan: ${formatCurrency(summary.totalIncome)}
-│  📤 Total Pengeluaran: ${formatCurrency(summary.totalExpense)}
-│  📊 Net Flow: ${summary.netFlow >= 0 ? '+' : ''}${formatCurrency(summary.netFlow)}
+│  💵 Saldo Saat Ini: ${formatCurrency(balance)}
+│  📥 Total Pemasukan: ${formatCurrency(totalIncome)}
+│  📤 Total Pengeluaran: ${formatCurrency(totalExpense)}
+│  📊 Net Flow: ${netFlow >= 0 ? '+' : ''}${formatCurrency(netFlow)}
 │
 ├───〔 BULAN INI 〕───
-│  📥 Income: ${formatCurrency(monthly.income)}
-│  📤 Expense: ${formatCurrency(monthly.expense)}
-│  📊 Net: ${monthly.net >= 0 ? '+' : ''}${formatCurrency(monthly.net)}
-│  📋 Transaksi: ${monthly.summary.transactionCount}
+│  📥 Income: ${formatCurrency(monthlyIncome)}
+│  📤 Expense: ${formatCurrency(monthlyExpense)}
+│  📊 Net: ${monthlyNet >= 0 ? '+' : ''}${formatCurrency(monthlyNet)}
+│  📋 Transaksi: ${monthlyTxCount}
 │
 ├───〔 BUDGET STATUS 〕───
 ${budgetText}
@@ -96,9 +176,18 @@ ${goalsText}│
 ╰────────────────────╯`,
             footer: global?.botname || 'Finance System',
             buttons: [
-                { buttonId: '.finadd income ', buttonText: { displayText: '➕ INCOME' } },
-                { buttonId: '.finadd expense ', buttonText: { displayText: '➖ EXPENSE' } },
-                { buttonId: '.finreport', buttonText: { displayText: '📊 DETAIL REPORT' } }
+                {
+                    buttonId: '.finadd income ',
+                    buttonText: { displayText: '➕ INCOME' }
+                },
+                {
+                    buttonId: '.finadd expense ',
+                    buttonText: { displayText: '➖ EXPENSE' }
+                },
+                {
+                    buttonId: '.finreport',
+                    buttonText: { displayText: '📊 DETAIL REPORT' }
+                }
             ],
             ctx: ctx_local
         });
@@ -110,12 +199,14 @@ ${goalsText}│
 };
 
 // =========================================
-// Helper: Generate progress bar
+// HELPER: SAFE PROGRESS BAR
 // =========================================
 const generateProgressBar = (percentage, length = 10) => {
-    const filled = Math.round((percentage / 100) * length);
-    const empty = length - filled;
-    return '█'.repeat(Math.min(filled, length)) + '░'.repeat(Math.max(0, empty));
+    const safePercentage = Math.max(0, Math.min(100, Number(percentage || 0)));
+    const filled = Math.round((safePercentage / 100) * length);
+    const empty = Math.max(0, length - filled);
+
+    return '█'.repeat(filled) + '░'.repeat(empty);
 };
 
 handler.command = ['finbalance', 'fbal', 'saldo'];

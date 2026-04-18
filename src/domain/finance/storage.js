@@ -22,8 +22,8 @@ const path = require('path');
 // CONSTANTS
 // =========================================
 const DATA_DIR = path.join(process.cwd(), 'data');
-const FINANCE_FILE = path.join(DATA_DIR, 'finance.json');
-const LEDGER_FILE = path.join(DATA_DIR, 'finance-ledger.json');
+const FINANCE_FILE = path.join(DATA_DIR, 'database.json');
+const LEDGER_FILE = path.join(DATA_DIR, 'database.json');
 const BUDGET_FILE = path.join(DATA_DIR, 'finance-budgets.json');
 const GOALS_FILE = path.join(DATA_DIR, 'finance-goals.json');
 

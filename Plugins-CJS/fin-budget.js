@@ -8,11 +8,14 @@
  *  .finbudget check
  *  .finbudget delete <budget-id>
  *
- * INTEGRASI: Menggunakan ctx.user.number dari middleware
+ * INTEGRASI:
+ * - Menggunakan ctx (middleware)
+ * - Hardened userId resolver (ANTI ERROR ENGINE)
+ * =========================================
  */
 
 const handler = async (m, Obj) => {
-    const { text, args, reply, conn, createReplyEngine, global, ctx } = Obj;
+    const { args, reply, conn, createReplyEngine, global, ctx } = Obj;
 
     try {
         if (!createReplyEngine) {
@@ -21,47 +24,61 @@ const handler = async (m, Obj) => {
 
         const engine = createReplyEngine(conn, global);
 
-        // 🔧 INTEGRASI MIDDLEWARE
+        // =========================================
+        // VALIDASI CONTEXT
+        // =========================================
         if (!ctx || !ctx.user) {
             await reply('⚠️ Silakan register terlebih dahulu dengan mengetik .register');
             return;
         }
 
-        const userId = ctx.user.number;
+        // 🔥 HARDENED USER ID (INI KUNCI FIX ERROR)
+        const userId =
+            ctx.user?.number ||
+            ctx.number ||
+            ctx.userId ||
+            (typeof m.sender === 'string' ? m.sender.split('@')[0] : null);
+
+        if (!userId) {
+            console.error('[fin-budget] Invalid userId:', ctx);
+            await reply('❌ Gagal mengidentifikasi user.');
+            return;
+        }
+
         const ctx_local = {
             name: m.pushName || ctx.alias || 'User',
             number: userId,
             thumb: global?.thumb
         };
 
-        // Initialize
-        const { initFinanceDB, formatCurrency } = require('../src/domain/finance/engine');
-        const { budget } = require('../src/domain/finance/engine');
+        // =========================================
+        // INIT ENGINE
+        // =========================================
+        const finance = require('../src/domain/finance/engine');
+        const { initFinanceDB, formatCurrency, budget } = finance;
+
         initFinanceDB();
 
-        // Default: list
-        if (args.length === 0) {
-            args[0] = 'list';
-        }
+        // DEFAULT COMMAND
+        if (args.length === 0) args[0] = 'list';
 
         const sub = args[0].toLowerCase();
 
-        // ═══════════════════════════════════
+        // =========================================
         // SET BUDGET
-        // ═══════════════════════════════════
-        if (sub === 'set' || sub === 'add' || sub === 'buat') {
+        // =========================================
+        if (['set', 'add', 'buat'].includes(sub)) {
+
             if (args.length < 3) {
                 await engine.send(m, {
                     text: `
 ╭───〔 FINANCE BUDGET — SET 〕───╮
 │
-│  Format: .finbudget set <kategori> <jumlah> [period]
+│  Format:
+│  .finbudget set <kategori> <jumlah> [period]
 │
-│  Period: monthly (default), weekly, yearly
-│
-│  Contoh:
-│  .finbudget set makanan 2000000 monthly
-│  .finbudget set transport 500000 weekly
+│  Period:
+│  monthly (default), weekly, yearly
 │
 ╰────────────────────╯`,
                     ctx: ctx_local
@@ -71,131 +88,147 @@ const handler = async (m, Obj) => {
 
             const category = args[1].toLowerCase();
             const amount = parseFloat(args[2].replace(/[^0-9]/g, ''));
-            const period = args[3] || 'monthly';
+            const period = (args[3] || 'monthly').toLowerCase();
 
-            if (isNaN(amount) || amount <= 0) {
-                await engine.send(m, { text: '❌ Jumlah harus angka positif', ctx: ctx_local });
+            if (!amount || amount <= 0) {
+                await engine.send(m, {
+                    text: '❌ Jumlah harus angka positif',
+                    ctx: ctx_local
+                });
                 return;
             }
 
             const validPeriods = ['monthly', 'weekly', 'yearly'];
+
             if (!validPeriods.includes(period)) {
-                await engine.send(m, { text: `❌ Period harus: ${validPeriods.join(', ')}`, ctx: ctx_local });
+                await engine.send(m, {
+                    text: `❌ Period harus: ${validPeriods.join(', ')}`,
+                    ctx: ctx_local
+                });
                 return;
             }
 
-            const validation = budget.validateBudget({ userId, category, amount, period });
+            const validation = budget.validateBudget({
+                userId,
+                category,
+                amount,
+                period
+            });
+
             if (!validation.valid) {
-                await engine.send(m, { text: `❌ ${validation.errors.join(', ')}`, ctx: ctx_local });
+                await engine.send(m, {
+                    text: `❌ ${validation.errors.join(', ')}`,
+                    ctx: ctx_local
+                });
                 return;
             }
 
-            const newBudget = budget.createBudget({ userId, category, amount, period });
+            const newBudget = budget.createBudget({
+                userId,
+                category,
+                amount,
+                period
+            });
 
             await engine.sendHybrid(m, {
                 text: `
 ╭───〔 BUDGET SET 〕───╮
 │
-│  ✅ Budget berhasil dibuat!
-│
-│  📂 Kategori: ${newBudget.category}
-│  💵 Limit: ${formatCurrency(newBudget.amount)}
-│  📅 Period: ${newBudget.period}
-│  🆔 ID: ${newBudget.id}
-│
-│  Budget aktif segera setelah dibuat.
-│  Budget lama untuk kategori yang sama
-│  akan dinonaktifkan otomatis.
+│  📂 ${newBudget.category}
+│  💵 ${formatCurrency(newBudget.amount)}
+│  📅 ${newBudget.period}
+│  🆔 ${newBudget.id}
 │
 ╰────────────────────╯`,
                 footer: global?.botname || 'Finance System',
                 buttons: [
-                    { buttonId: '.finbudget check', buttonText: { displayText: '🔍 CHECK BUDGET' } },
-                    { buttonId: '.finbudget list', buttonText: { displayText: '📋 LIST BUDGET' } }
+                    {
+                        buttonId: '.finbudget check',
+                        buttonText: { displayText: '🔍 CHECK' }
+                    },
+                    {
+                        buttonId: '.finbudget list',
+                        buttonText: { displayText: '📋 LIST' }
+                    }
                 ],
                 ctx: ctx_local
             });
         }
 
-        // ═══════════════════════════════════
-        // LIST BUDGET
-        // ═══════════════════════════════════
-        else if (sub === 'list' || sub === 'daftar') {
+        // =========================================
+        // LIST
+        // =========================================
+        else if (['list', 'daftar'].includes(sub)) {
+
             const budgets = budget.getUserBudgets(userId, { activeOnly: false });
 
-            if (budgets.length === 0) {
-                await engine.sendHybrid(m, {
-                    text: `
-╭───〔 FINANCE BUDGETS 〕───╮
-│
-│  Belum ada budget.
-│
-│  Buat budget dengan:
-│  .finbudget set <kategori> <jumlah>
-│
-╰────────────────────╯`,
-                    footer: global?.botname || 'Finance System',
-                    buttons: [
-                        { buttonId: '.finbudget set ', buttonText: { displayText: '➕ BUAT BUDGET' } }
-                    ],
+            if (!budgets.length) {
+                await engine.send(m, {
+                    text: `Belum ada budget.`,
                     ctx: ctx_local
                 });
                 return;
             }
 
-            let listText = '';
+            let txt = '';
+
             for (const b of budgets) {
                 const status = b.isActive ? '🟢' : '⚪';
-                listText += `│  ${status} ${b.category}: ${formatCurrency(b.amount)}/${b.period}\n│     🆔 ${b.id.substring(0, 8)}...\n│\n`;
+                txt += `│ ${status} ${b.category} (${b.period})\n│ ${formatCurrency(b.amount)}\n│\n`;
             }
 
             await engine.send(m, {
                 text: `
-╭───〔 📋 BUDGET LIST 〕───╮
-│  ${budgets.filter(b => b.isActive).length} Aktif / ${budgets.length} Total
-│
-${listText}╰────────────────────╯`,
+╭───〔 BUDGET LIST 〕───╮
+${txt}╰────────────╯`,
                 ctx: ctx_local
             });
         }
 
-        // ═══════════════════════════════════
-        // CHECK BUDGET STATUS
-        // ═══════════════════════════════════
-        else if (sub === 'check' || sub === 'status') {
+        // =========================================
+        // CHECK
+        // =========================================
+        else if (['check', 'status'].includes(sub)) {
+
             const checks = budget.checkAllBudgets(userId);
 
-            if (checks.length === 0) {
+            if (!checks.length) {
                 await engine.send(m, {
-                    text: `Belum ada budget aktif. Buat dengan .finbudget set <kategori> <jumlah>`,
+                    text: `Belum ada budget aktif.`,
                     ctx: ctx_local
                 });
                 return;
             }
 
-            let statusText = '';
+            let txt = '';
+
             for (const c of checks) {
                 const bar = generateProgressBar(c.percentage, 10);
-                const emoji = c.isOverBudget ? '🔴 OVER' : c.isNearLimit ? '🟡 NEAR' : '🟢 OK';
-                statusText += `│\n│  ${emoji} ${c.budget.category}\n│  ${bar} ${Math.round(c.percentage)}%\n│  💵 ${formatCurrency(c.spent)} / ${formatCurrency(c.budget.amount)}\n│  📊 Sisa: ${formatCurrency(c.remaining)} | 📋 ${c.transactions} transaksi\n`;
+                const emoji = c.isOverBudget
+                    ? '🔴'
+                    : c.isNearLimit
+                    ? '🟡'
+                    : '🟢';
+
+                txt += `│ ${emoji} ${c.budget.category}\n│ ${bar} ${Math.round(c.percentage)}%\n│\n`;
             }
 
             await engine.send(m, {
                 text: `
-╭───〔 📊 BUDGET STATUS 〕───╮
-${statusText}│
-╰────────────────────╯`,
+╭───〔 STATUS 〕───╮
+${txt}╰──────────╯`,
                 ctx: ctx_local
             });
         }
 
-        // ═══════════════════════════════════
-        // DELETE BUDGET
-        // ═══════════════════════════════════
-        else if (sub === 'delete' || sub === 'del' || sub === 'remove') {
+        // =========================================
+        // DELETE
+        // =========================================
+        else if (['delete', 'del', 'remove'].includes(sub)) {
+
             if (args.length < 2) {
                 await engine.send(m, {
-                    text: `Format: .finbudget delete <budget-id>\n\nCek ID dengan .finbudget list`,
+                    text: `Format: .finbudget delete <id>`,
                     ctx: ctx_local
                 });
                 return;
@@ -205,54 +238,55 @@ ${statusText}│
             const target = budget.getBudget(budgetId);
 
             if (!target || target.userId !== userId) {
-                await engine.send(m, { text: '❌ Budget tidak ditemukan', ctx: ctx_local });
+                await engine.send(m, {
+                    text: '❌ Budget tidak ditemukan',
+                    ctx: ctx_local
+                });
                 return;
             }
 
             budget.deactivateBudget(budgetId);
+
             await engine.send(m, {
-                text: `✅ Budget *${target.category}* (${formatCurrency(target.amount)}) dinonaktifkan.`,
+                text: `✅ Budget ${target.category} dinonaktifkan`,
                 ctx: ctx_local
             });
         }
 
-        // ═══════════════════════════════════
+        // =========================================
         // HELP
-        // ═══════════════════════════════════
+        // =========================================
         else {
             await engine.send(m, {
                 text: `
 ╭───〔 FINANCE BUDGET 〕───╮
-│
-│  .finbudget set <kategori> <jumlah> [period]
-│  .finbudget list
-│  .finbudget check
-│  .finbudget delete <budget-id>
-│
-╰────────────────────╯`,
+│ set | list | check | delete
+╰────────────────────────╯`,
                 ctx: ctx_local
             });
         }
 
     } catch (err) {
         console.error('[fin-budget error]', err);
-        await reply('❌ Terjadi error. Cek format dengan .finbudget');
+        await reply('❌ Terjadi error.');
     }
 };
 
+// =========================================
+// PROGRESS BAR
+// =========================================
 const generateProgressBar = (percentage, length = 10) => {
     const filled = Math.round((percentage / 100) * length);
-    const empty = length - filled;
-    return '█'.repeat(Math.min(filled, length)) + '░'.repeat(Math.max(0, empty));
+    return '█'.repeat(filled) + '░'.repeat(length - filled);
 };
 
 handler.command = ['finbudget', 'fbudget', 'budget'];
 handler.tags = ['finance'];
 handler.help = [
-    'finbudget set <kategori> <jumlah> [period] — Set budget',
-    'finbudget list — Lihat semua budget',
-    'finbudget check — Cek status budget',
-    'finbudget delete <id> — Hapus budget'
+    'finbudget set <kategori> <jumlah> [period]',
+    'finbudget list',
+    'finbudget check',
+    'finbudget delete <id>'
 ];
 
 module.exports = handler;

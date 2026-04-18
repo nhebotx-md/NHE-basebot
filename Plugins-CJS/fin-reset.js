@@ -1,20 +1,5 @@
-/**
- * =========================================
- * PLUGIN: fin-reset.js — Reset Finance Data
- * =========================================
- * Command: .finreset [confirm]
- * Menghapus semua data finance user
- *
- * ⚠️ OWNER ONLY: Plugin ini memerlukan akses owner
- * karena bersifat destructive.
- *
- * INTEGRASI:
- * - Menggunakan ctx.user.number dari middleware
- - Mengecek ctx.isOwner untuk otorisasi
- */
-
 const handler = async (m, Obj) => {
-    const { text, args, reply, conn, createReplyEngine, global, ctx } = Obj;
+    const { args, reply, conn, createReplyEngine, global, ctx } = Obj;
 
     try {
         if (!createReplyEngine) {
@@ -23,13 +8,15 @@ const handler = async (m, Obj) => {
 
         const engine = createReplyEngine(conn, global);
 
-        // 🔧 INTEGRASI MIDDLEWARE: Cek ctx
-        if (!ctx || !ctx.user) {
+        // =========================
+        // VALIDASI MIDDLEWARE
+        // =========================
+        if (!ctx || !ctx.user || !ctx.userId) {
             await reply('⚠️ Silakan register terlebih dahulu dengan mengetik .register');
             return;
         }
 
-        const userId = ctx.user.number;
+        const userId = ctx.userId;
         const isOwner = ctx.isOwner === true;
 
         const ctx_local = {
@@ -38,7 +25,9 @@ const handler = async (m, Obj) => {
             thumb: global?.thumb
         };
 
-        // OWNER CHECK
+        // =========================
+        // OWNER ONLY
+        // =========================
         if (!isOwner) {
             await engine.send(m, {
                 text: `
@@ -46,127 +35,106 @@ const handler = async (m, Obj) => {
 │
 │  Perintah ini hanya untuk OWNER.
 │
-│  Jika kamu ingin reset data sendiri,
-│  hubungi owner bot.
-│
 ╰────────────────────╯`,
                 ctx: ctx_local
             });
             return;
         }
 
-        // Initialize
-        const { initFinanceDB, formatCurrency } = require('../src/domain/finance/engine');
-        const { ledger, budget, goals, storage } = require('../src/domain/finance/engine');
-        initFinanceDB();
-
-        // Parse: .finreset @user atau .finreset me
+        // =========================
+        // TARGET PARSING
+        // =========================
         let targetId = userId;
         let targetName = ctx.alias || 'User';
 
-        if (args.length > 0) {
-            if (args[0].toLowerCase() !== 'me' && args[0].toLowerCase() !== 'confirm') {
-                // Mentioned user
-                const mentioned = args[0].replace(/[^0-9]/g, '');
-                if (mentioned) {
-                    targetId = mentioned;
-                    targetName = mentioned;
-                }
+        if (args[0] && args[0] !== 'confirm') {
+            const mention = args[0].replace(/[^0-9]/g, '');
+            if (mention) {
+                targetId = mention;
+                targetName = mention;
             }
         }
 
-        // Require confirmation
-        if (args[0]?.toLowerCase() !== 'confirm') {
+        // =========================
+        // CONFIRMATION GATE
+        // =========================
+        if (args[0] !== 'confirm') {
             await engine.sendHybrid(m, {
                 text: `
 ╭───〔 ⚠️ FINANCE RESET 〕───╮
 │
 │  ⚠️ PERINGATAN DESTRUKTIF
 │
-│  Target: ${targetName} (${targetId})
+│  Target: ${targetName}
 │
 │  Aksi ini akan menghapus:
 │  • Semua transaksi (ledger)
-│  • Semua budget
-│  • Semua goals
-│  • Semua data analytics
+│  • Data user finance
 │
-│  Data yang dihapus TIDAK BISA dikembalikan!
+│  ⚠️ TIDAK BISA DIKEMBALIKAN
 │
-│  Ketik .finreset confirm untuk melanjutkan.
+│  Ketik:
+│  .finreset confirm
 │
 ╰────────────────────╯`,
                 footer: global?.botname || 'Finance System',
                 buttons: [
-                    { buttonId: '.finreset confirm', buttonText: { displayText: '⚠️ KONFIRMASI RESET' } }
+                    { buttonId: '.finreset confirm', buttonText: { displayText: '⚠️ KONFIRMASI' } }
                 ],
                 ctx: ctx_local
             });
             return;
         }
 
-        // ═══════════════════════════════════
-        // EXECUTE RESET
-        // ═══════════════════════════════════
+        // =========================
+        // EXECUTION (MONGOOSE)
+        // =========================
+        const { connectMongo } = require('../src/lib/mongo');
+        const FinanceLedger = require('../src/models/FinanceLedger');
+        const FinanceUser = require('../src/models/FinanceUser');
 
-        // 1. Get current counts for reporting
-        const allTxs = ledger.getUserTransactions(targetId);
-        const allBudgets = budget.getUserBudgets(targetId, { activeOnly: false });
-        const allGoals = goals.getUserGoals(targetId, { activeOnly: false });
+        await connectMongo();
 
-        const txCount = allTxs.length;
-        const budgetCount = allBudgets.length;
-        const goalCount = allGoals.length;
+        // Hitung sebelum delete
+        const txCount = await FinanceLedger.countDocuments({ userId: targetId });
 
-        // 2. Remove transactions from ledger
-        const currentLedger = storage.getLedger();
-        const filteredLedger = currentLedger.filter(tx => tx.userId !== targetId);
-        storage.setLedger(filteredLedger);
+        // DELETE ledger
+        await FinanceLedger.deleteMany({ userId: targetId });
 
-        // 3. Remove budgets
-        const currentBudgets = storage.getBudgets();
-        const filteredBudgets = currentBudgets.filter(b => b.userId !== targetId);
-        storage.setBudgets(filteredBudgets);
+        // OPTIONAL: reset user (biar fresh)
+        await FinanceUser.deleteOne({ userId: targetId });
 
-        // 4. Remove goals
-        const currentGoals = storage.getGoals();
-        const filteredGoals = currentGoals.filter(g => g.userId !== targetId);
-        storage.setGoals(filteredGoals);
-
-        // 5. Save all changes
-        storage.saveAll();
-
+        // =========================
+        // RESULT
+        // =========================
         await engine.sendHybrid(m, {
             text: `
-╭───〔 ✅ FINANCE RESET COMPLETE 〕───╮
-│
-│  ✅ Data finance berhasil di-reset!
+╭───〔 ✅ RESET BERHASIL 〕───╮
 │
 │  👤 Target: ${targetName}
 │
 │  Data dihapus:
 │  • ${txCount} transaksi
-│  • ${budgetCount} budget
-│  • ${goalCount} goals
+│  • User finance di-reset
 │
-│  📝 Ledger tetap immutable untuk user lain.
-│  Hanya data target yang dihapus.
+│  Sistem akan auto-create ulang
+│  saat user transaksi lagi.
 │
 ╰────────────────────╯`,
             footer: global?.botname || 'Finance System',
             ctx: ctx_local
         });
 
-        console.log(`[fin-reset] Owner ${userId} reset finance data for ${targetId}`);
+        console.log(`[fin-reset] ${userId} reset data ${targetId}`);
 
     } catch (err) {
         console.error('[fin-reset error]', err);
-        await reply('❌ Terjadi error saat reset data.');
+        await reply('❌ Gagal reset data finance.');
     }
 };
 
 handler.command = ['finreset', 'freset'];
 handler.tags = ['finance', 'owner'];
-handler.help = ['finreset — Reset data finance (OWNER ONLY)'];
+handler.help = ['finreset confirm — Reset data finance (OWNER ONLY)'];
 
 module.exports = handler;

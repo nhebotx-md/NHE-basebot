@@ -90,11 +90,20 @@ function buildContext({ user, userId, botNumber, groupMetadata, levelUp = false 
             day: 'numeric'
           })
         : 'Belum terdaftar';
+// Extract number dari JID (WAJIB ADA)
+let number = 'unknown';
 
+if (typeof userId === 'string' && userId.includes('@')) {
+    number = userId.split('@')[0];
+} else {
+    console.warn('[ContextBuilder] Invalid userId:', userId);
+}
     // Build comprehensive context
     const ctx = {
         // Core user data
         user,
+        number,
+        jid: userId,
         userId,
 
         // Role flags (convenient access)

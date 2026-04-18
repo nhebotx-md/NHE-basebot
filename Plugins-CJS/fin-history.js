@@ -1,15 +1,5 @@
-/**
- * =========================================
- * PLUGIN: fin-history.js — Transaction History
- * =========================================
- * Command: .finhistory [limit] [type]
- * Menampilkan riwayat transaksi dari ledger
- *
- * INTEGRASI: Menggunakan ctx.user.number dari middleware
- */
-
 const handler = async (m, Obj) => {
-    const { text, args, reply, conn, createReplyEngine, global, ctx } = Obj;
+    const { args, reply, conn, createReplyEngine, global, ctx } = Obj;
 
     try {
         if (!createReplyEngine) {
@@ -18,56 +8,59 @@ const handler = async (m, Obj) => {
 
         const engine = createReplyEngine(conn, global);
 
-        // 🔧 INTEGRASI MIDDLEWARE
-        if (!ctx || !ctx.user) {
+        // VALIDASI MIDDLEWARE
+        if (!ctx || !ctx.user || !ctx.userId) {
             await reply('⚠️ Silakan register terlebih dahulu dengan mengetik .register');
             return;
         }
 
-        const userId = ctx.user.number;
+        // 🔥 FIX UTAMA
+        const userId = ctx.userId; // JANGAN pakai ctx.user.number lagi
+
         const ctx_local = {
             name: m.pushName || ctx.alias || 'User',
             number: userId,
             thumb: global?.thumb
         };
 
-        // Initialize
-        const { initFinanceDB, formatCurrency } = require('../src/domain/finance/engine');
-        const { ledger } = require('../src/domain/finance/engine');
-        initFinanceDB();
+        // ✅ IMPORT YANG BENAR
+        const { formatRupiah } = require('../src/domain/finance/engine');
+        const { getUserTransactions } = require('../src/domain/finance/ledger');
 
-        // Parse args
+        // =========================
+        // PARSE ARGS
+        // =========================
         let limit = 10;
         let type = null;
 
         for (const arg of args) {
-            if (!isNaN(arg) && parseInt(arg) > 0) {
-                limit = parseInt(arg);
-            } else if (['income', 'expense'].includes(arg.toLowerCase())) {
-                type = arg.toLowerCase();
-            }
+            if (!isNaN(arg)) limit = parseInt(arg);
+            if (['income', 'expense'].includes(arg)) type = arg;
         }
-        limit = Math.min(limit, 30); // Max 30 entries
 
-        // Get transactions
-        const options = { limit };
-        if (type) options.type = type;
+        limit = Math.min(limit, 30);
 
-        const txs = ledger.getUserTransactions(userId, options);
+        // =========================
+        // FETCH DATA (ASYNC)
+        // =========================
+        const txs = await getUserTransactions(userId, {
+            limit,
+            type
+        });
 
-        if (txs.length === 0) {
+        if (!txs || txs.length === 0) {
             await engine.sendHybrid(m, {
                 text: `
 ╭───〔 📋 TRANSACTION HISTORY 〕───╮
 │
 │  Belum ada transaksi.
 │
-│  Mulai catat dengan:
-│  .finadd income 5000000 gaji
-│  .finadd expense 50000 makan
+│  Gunakan:
+│  .finadd income 50000 gaji
+│  .finadd expense 10000 makan
 │
 ╰────────────────────╯`,
-                footer: global?.botname || 'Finance System',
+                footer: global?.botname,
                 buttons: [
                     { buttonId: '.finadd income ', buttonText: { displayText: '➕ INCOME' } },
                     { buttonId: '.finadd expense ', buttonText: { displayText: '➖ EXPENSE' } }
@@ -77,33 +70,39 @@ const handler = async (m, Obj) => {
             return;
         }
 
-        // Build history text
+        // =========================
+        // BUILD OUTPUT
+        // =========================
         let historyText = '';
-        for (let i = txs.length - 1; i >= 0; i--) {
-            const tx = txs[i];
+
+        txs.forEach(tx => {
             const emoji = tx.type === 'income' ? '🟢➕' : '🔴➖';
-            const date = new Date(tx.timestamp).toLocaleDateString('id-ID', {
-                day: '2-digit',
-                month: 'short',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
 
-            historyText += `│  ${emoji} ${formatCurrency(tx.amount)}\n│     📂 ${tx.category} | ${date}\n│     📝 ${tx.description || '-'}\n│     💰 Saldo: ${formatCurrency(tx.runningBalance || 0)}\n│\n`;
-        }
+            const date = new Date(tx.createdAt).toLocaleString('id-ID');
 
-        const totalIncome = txs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-        const totalExpense = txs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+            historyText += `│  ${emoji} ${formatRupiah(tx.amount)}\n`;
+            historyText += `│     📂 ${tx.category}\n`;
+            historyText += `│     📝 ${tx.note || '-'}\n`;
+            historyText += `│     📅 ${date}\n│\n`;
+        });
+
+        const totalIncome = txs
+            .filter(t => t.type === 'income')
+            .reduce((s, t) => s + t.amount, 0);
+
+        const totalExpense = txs
+            .filter(t => t.type === 'expense')
+            .reduce((s, t) => s + t.amount, 0);
 
         await engine.send(m, {
             text: `
 ╭───〔 📋 RIWAYAT TRANSAKSI 〕───╮
-│  Menampilkan ${txs.length} transaksi terakhir
+│  Total: ${txs.length} transaksi
 │
 ├───〔 RINGKASAN 〕───
-│  📥 Income: ${formatCurrency(totalIncome)}
-│  📤 Expense: ${formatCurrency(totalExpense)}
-│  📊 Net: ${totalIncome - totalExpense >= 0 ? '+' : ''}${formatCurrency(totalIncome - totalExpense)}
+│  📥 Income: ${formatRupiah(totalIncome)}
+│  📤 Expense: ${formatRupiah(totalExpense)}
+│  📊 Net: ${formatRupiah(totalIncome - totalExpense)}
 │
 ${historyText}╰────────────────────╯`,
             ctx: ctx_local
@@ -111,12 +110,12 @@ ${historyText}╰────────────────────╯
 
     } catch (err) {
         console.error('[fin-history error]', err);
-        await reply('❌ Terjadi error saat mengambil riwayat.');
+        await reply('❌ Gagal mengambil riwayat transaksi.');
     }
 };
 
 handler.command = ['finhistory', 'fhistory', 'riwayat', 'mutasi'];
 handler.tags = ['finance'];
-handler.help = ['finhistory [jumlah] [income/expense] — Riwayat transaksi'];
+handler.help = ['finhistory [jumlah] [income/expense]'];
 
 module.exports = handler;

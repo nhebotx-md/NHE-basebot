@@ -1,3 +1,11 @@
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[UNHANDLED REJECTION]', reason);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('[UNCAUGHT EXCEPTION]', err);
+});
+
 /**
  * =========================================
  * 📌 FILE: main.js (RECONSTRUCTED)
@@ -27,6 +35,8 @@ console.clear();
 
 // Load konfigurasi global terlebih dahulu
 require('./src/config/config');
+require('dotenv').config();
+console.log("URI:", process.env.MONGODB_URI);
 const { initialize } = require('./src/domain/finance');
    initialize();
 

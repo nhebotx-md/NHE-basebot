@@ -8,12 +8,14 @@
  *  .fingoal contribute <goal-id> <jumlah>
  *  .fingoal progress
  *
- * INTEGRASI: Menggunakan ctx.user.number dari middleware
- * sebagai userId untuk sistem finance.
+ * INTEGRASI:
+ * - Menggunakan ctx.user.number dari middleware
+ * - Fallback ke ctx.number / ctx.userId
+ * =========================================
  */
 
 const handler = async (m, Obj) => {
-    const { text, args, reply, conn, createReplyEngine, global, ctx } = Obj;
+    const { args, reply, conn, createReplyEngine, global, ctx } = Obj;
 
     try {
         if (!createReplyEngine) {
@@ -22,52 +24,63 @@ const handler = async (m, Obj) => {
 
         const engine = createReplyEngine(conn, global);
 
-        // 🔧 INTEGRASI MIDDLEWARE: Gunakan ctx dari middleware
+        // =========================================
+        // VALIDASI CONTEXT
+        // =========================================
         if (!ctx || !ctx.user) {
             await reply('⚠️ Silakan register terlebih dahulu dengan mengetik .register');
             return;
         }
 
-        const userId = ctx.user.number;
+        // HARDENED USER ID (ANTI ERROR ENGINE)
+        const userId =
+            ctx.user?.number ||
+            ctx.number ||
+            ctx.userId ||
+            (typeof m.sender === 'string' ? m.sender.split('@')[0] : null);
 
-        // Build local ctx untuk ReplyEngine
+        if (!userId) {
+            console.error('[fin-goal] Invalid userId:', ctx);
+            await reply('❌ Gagal mengidentifikasi user.');
+            return;
+        }
+
         const ctx_local = {
             name: m.pushName || ctx.alias || 'User',
             number: userId,
             thumb: global?.thumb
         };
 
-        // Initialize
-        const { initFinanceDB, formatCurrency } = require('../src/domain/finance/engine');
-        const { goals } = require('../src/domain/finance/engine');
+        // =========================================
+        // INIT ENGINE
+        // =========================================
+        const finance = require('../src/domain/finance/engine');
+        const { initFinanceDB, formatCurrency, goals } = finance;
         const { emitFinanceEvent, EVENT_TYPES, setupDefaultListeners } = require('../src/domain/finance/events');
+
         initFinanceDB();
         setupDefaultListeners();
 
-        // Default action: show help if no args
-        if (args.length === 0) {
-            args[0] = 'list';
-        }
+        // DEFAULT COMMAND
+        if (args.length === 0) args[0] = 'list';
 
         const subCommand = args[0].toLowerCase();
 
-        // ═══════════════════════════════════
-        // SUBCOMMAND: CREATE
-        // ═══════════════════════════════════
-        if (subCommand === 'create' || subCommand === 'baru' || subCommand === 'add') {
+        // =========================================
+        // CREATE
+        // =========================================
+        if (['create', 'baru', 'add'].includes(subCommand)) {
+
             if (args.length < 4) {
                 await engine.send(m, {
                     text: `
 ╭───〔 FINANCE GOAL — CREATE 〕───╮
 │
-│  Format: .fingoal create <nama> <target> <kategori> [deadline]
+│  Format:
+│  .fingoal create <nama> <target> <kategori> [deadline]
 │
-│  Kategori: savings, emergency, investment, debt, other
-│  Deadline: YYYY-MM-DD (opsional)
-│
-│  Contoh:
-│  .fingoal create "Dana Darurat" 10000000 emergency
-│  .fingoal create "iPhone 16" 25000000 savings 2025-12-31
+│  Kategori:
+│  savings, emergency, investment, debt, other
 │
 ╰────────────────────╯`,
                     ctx: ctx_local
@@ -75,26 +88,34 @@ const handler = async (m, Obj) => {
                 return;
             }
 
-            // Parse: goal create "Nama Goal" 10000000 savings 2025-12-31
-            let name, target, category, deadline;
-
-            name = args[1].replace(/"/g, '');
-            target = parseFloat(args[2].replace(/[^0-9]/g, ''));
-            category = args[3].toLowerCase();
-            deadline = args[4] || null;
+            const name = args[1].replace(/"/g, '');
+            const target = parseFloat(args[2].replace(/[^0-9]/g, ''));
+            const category = args[3].toLowerCase();
+            const deadline = args[4] || null;
 
             const validCategories = ['savings', 'emergency', 'investment', 'debt', 'other'];
+
             if (!validCategories.includes(category)) {
                 await engine.send(m, {
-                    text: `❌ Kategori tidak valid. Pilihan: ${validCategories.join(', ')}`,
+                    text: `❌ Kategori tidak valid`,
                     ctx: ctx_local
                 });
                 return;
             }
 
-            const validation = goals.validateGoal({ userId, name, targetAmount: target, category, deadline });
+            const validation = goals.validateGoal({
+                userId,
+                name,
+                targetAmount: target,
+                category,
+                deadline
+            });
+
             if (!validation.valid) {
-                await engine.send(m, { text: `❌ Error: ${validation.errors.join(', ')}`, ctx: ctx_local });
+                await engine.send(m, {
+                    text: `❌ ${validation.errors.join(', ')}`,
+                    ctx: ctx_local
+                });
                 return;
             }
 
@@ -116,99 +137,68 @@ const handler = async (m, Obj) => {
                 text: `
 ╭───〔 GOAL CREATED 〕───╮
 │
-│  ✅ Goal berhasil dibuat!
-│
 │  🎯 ${goal.name}
-│  💵 Target: ${formatCurrency(goal.targetAmount)}
-│  📂 Kategori: ${goal.category}
-│  📅 Deadline: ${deadlineText}
-│  🆔 ID: ${goal.id}
-│
-│  Gunakan .fingoal contribute ${goal.id} <jumlah>
-│  untuk mulai menabung ke goal ini.
+│  💵 ${formatCurrency(goal.targetAmount)}
+│  📂 ${goal.category}
+│  📅 ${deadlineText}
+│  🆔 ${goal.id}
 │
 ╰────────────────────╯`,
                 footer: global?.botname || 'Finance System',
                 buttons: [
-                    { buttonId: `.fingoal contribute ${goal.id} `, buttonText: { displayText: '💰 CONTRIBUTE' } },
-                    { buttonId: '.fingoal progress', buttonText: { displayText: '📊 PROGRESS' } },
-                    { buttonId: '.fingoal list', buttonText: { displayText: '📋 LIST GOAL' } }
+                    {
+                        buttonId: `.fingoal contribute ${goal.id}`,
+                        buttonText: { displayText: '💰 CONTRIBUTE' }
+                    },
+                    {
+                        buttonId: '.fingoal list',
+                        buttonText: { displayText: '📋 LIST' }
+                    }
                 ],
                 ctx: ctx_local
             });
         }
 
-        // ═══════════════════════════════════
-        // SUBCOMMAND: LIST
-        // ═══════════════════════════════════
-        else if (subCommand === 'list' || subCommand === 'daftar') {
+        // =========================================
+        // LIST
+        // =========================================
+        else if (['list', 'daftar'].includes(subCommand)) {
+
             const userGoals = goals.getUserGoals(userId);
 
-            if (userGoals.length === 0) {
-                await engine.sendHybrid(m, {
-                    text: `
-╭───〔 FINANCE GOALS 〕───╮
-│
-│  Belum ada goal keuangan.
-│
-│  Buat goal pertama dengan:
-│  .fingoal create <nama> <target> <kategori>
-│
-╰────────────────────╯`,
-                    footer: global?.botname || 'Finance System',
-                    buttons: [
-                        { buttonId: '.fingoal create ', buttonText: { displayText: '➕ BUAT GOAL' } }
-                    ],
+            if (!userGoals.length) {
+                await engine.send(m, {
+                    text: `Belum ada goal.`,
                     ctx: ctx_local
                 });
                 return;
             }
 
-            let goalsText = '';
+            let txt = '';
+
             for (const g of userGoals) {
                 const progress = goals.getGoalProgress(g.id);
                 const bar = generateProgressBar(progress.percentage, 8);
-                const status = g.isCompleted ? '✅ DONE'
-                    : g.isActive ? `${Math.round(progress.percentage)}%`
-                    : '⏹️ INACTIVE';
-                const deadline = g.deadline
-                    ? new Date(g.deadline).toLocaleDateString('id-ID', { month: 'short', day: 'numeric' })
-                    : 'no deadline';
 
-                goalsText += `│\n│  ${status} ${g.name}\n│  ${bar} ${formatCurrency(g.currentAmount)}/${formatCurrency(g.targetAmount)}\n│  📅 ${deadline} | 🆔 ${g.id.substring(0, 8)}...\n`;
+                txt += `│ ${g.name}\n│ ${bar} ${Math.round(progress.percentage)}%\n│\n`;
             }
 
-            await engine.sendHybrid(m, {
+            await engine.send(m, {
                 text: `
-╭───〔 🎯 FINANCE GOALS 〕───╮
-│  ${userGoals.length} Goal Aktif
-${goalsText}│
-╰────────────────────╯`,
-                footer: global?.botname || 'Finance System',
-                buttons: [
-                    { buttonId: '.fingoal create ', buttonText: { displayText: '➕ GOAL BARU' } },
-                    { buttonId: '.fingoal progress', buttonText: { displayText: '📊 PROGRESS' } }
-                ],
+╭───〔 GOALS 〕───╮
+${txt}╰────────────╯`,
                 ctx: ctx_local
             });
         }
 
-        // ═══════════════════════════════════
-        // SUBCOMMAND: CONTRIBUTE
-        // ═══════════════════════════════════
-        else if (subCommand === 'contribute' || subCommand === 'contrib' || subCommand === 'add') {
+        // =========================================
+        // CONTRIBUTE
+        // =========================================
+        else if (['contribute', 'contrib'].includes(subCommand)) {
+
             if (args.length < 3) {
                 await engine.send(m, {
-                    text: `
-╭───〔 FINANCE GOAL — CONTRIBUTE 〕───╮
-│
-│  Format: .fingoal contribute <goal-id> <jumlah>
-│
-│  Contoh: .fingoal contribute GLxxxxxx 500000
-│
-│  Tips: Goal ID bisa dilihat di .fingoal list
-│
-╰────────────────────╯`,
+                    text: `Format: .fingoal contribute <id> <jumlah>`,
                     ctx: ctx_local
                 });
                 return;
@@ -217,137 +207,110 @@ ${goalsText}│
             const goalId = args[1];
             const amount = parseFloat(args[2].replace(/[^0-9]/g, ''));
 
-            if (isNaN(amount) || amount <= 0) {
-                await engine.send(m, { text: `❌ Jumlah tidak valid`, ctx: ctx_local });
+            if (!amount || amount <= 0) {
+                await engine.send(m, {
+                    text: `❌ Jumlah tidak valid`,
+                    ctx: ctx_local
+                });
                 return;
             }
 
             const goal = goals.getGoal(goalId);
+
             if (!goal || goal.userId !== userId) {
-                await engine.send(m, { text: `❌ Goal tidak ditemukan. Cek dengan .fingoal list`, ctx: ctx_local });
+                await engine.send(m, {
+                    text: `❌ Goal tidak ditemukan`,
+                    ctx: ctx_local
+                });
                 return;
             }
 
             const result = goals.contributeToGoal(goalId, amount);
 
             if (!result.success) {
-                await engine.send(m, { text: `❌ Gagal: ${result.error}`, ctx: ctx_local });
-                return;
-            }
-
-            emitFinanceEvent(EVENT_TYPES.GOAL_CONTRIBUTED, {
-                userId,
-                goal: result.goal,
-                contributed: result.contributed,
-                remaining: result.remaining
-            });
-
-            const progress = goals.getGoalProgress(goalId);
-            const bar = generateProgressBar(progress.percentage, 10);
-
-            await engine.sendHybrid(m, {
-                text: `
-╭───〔 GOAL CONTRIBUTION 〕───╮
-│
-│  ✅ Kontribusi berhasil!
-│
-│  🎯 ${result.goal.name}
-│  💵 Dikontribusi: ${formatCurrency(result.contributed)}
-│  📊 Progress: ${Math.round(progress.percentage)}%
-│  ${bar}
-│  💰 Terkumpul: ${formatCurrency(result.goal.currentAmount)}
-│  🎯 Target: ${formatCurrency(result.goal.targetAmount)}
-│  ${progress.isCompleted ? '\n│  🎉 GOAL TERCAPAI! SELAMAT!\n│' : `│  📌 Sisa: ${formatCurrency(result.remaining)}\n│`}
-╰────────────────────╯`,
-                footer: global?.botname || 'Finance System',
-                buttons: [
-                    { buttonId: `.fingoal contribute ${goalId} `, buttonText: { displayText: '💰 CONTRIBUTE LAGI' } },
-                    { buttonId: '.fingoal progress', buttonText: { displayText: '📊 SEMUA PROGRESS' } }
-                ],
-                ctx: ctx_local
-            });
-        }
-
-        // ═══════════════════════════════════
-        // SUBCOMMAND: PROGRESS
-        // ═══════════════════════════════════
-        else if (subCommand === 'progress' || subCommand === 'status') {
-            const allProgress = goals.getAllGoalsProgress(userId);
-
-            if (allProgress.length === 0) {
                 await engine.send(m, {
-                    text: `Belum ada goal. Buat dengan .fingoal create`,
+                    text: `❌ ${result.error}`,
                     ctx: ctx_local
                 });
                 return;
             }
 
-            let progressText = '';
-            for (const p of allProgress) {
-                const bar = generateProgressBar(p.percentage, 10);
-                const emoji = p.isCompleted ? '✅' : p.status === 'near-completion' ? '🏁' : p.status === 'halfway' ? '⚡' : '🌱';
-
-                progressText += `│\n│  ${emoji} ${p.goal.name}\n│  ${bar} ${Math.round(p.percentage)}%\n│  💵 ${formatCurrency(p.goal.currentAmount)} / ${formatCurrency(p.goal.targetAmount)}\n`;
-
-                if (p.dailyRequired && !p.isCompleted) {
-                    progressText += `│  📅 Perlu ${formatCurrency(p.dailyRequired)}/hari untuk tercapai\n`;
-                }
-                if (p.isCompleted) {
-                    progressText += `│  🎉 SELESAI!\n`;
-                }
-            }
+            const progress = goals.getGoalProgress(goalId);
+            const bar = generateProgressBar(progress.percentage, 10);
 
             await engine.send(m, {
                 text: `
-╭───〔 📊 GOALS PROGRESS 〕───╮
-${progressText}│
+╭───〔 CONTRIBUTION 〕───╮
+│
+│  ${goal.name}
+│  ${bar} ${Math.round(progress.percentage)}%
+│
 ╰────────────────────╯`,
                 ctx: ctx_local
             });
         }
 
-        // ═══════════════════════════════════
-        // UNKNOWN SUBCOMMAND
-        // ═══════════════════════════════════
-        else {
+        // =========================================
+        // PROGRESS
+        // =========================================
+        else if (['progress', 'status'].includes(subCommand)) {
+
+            const all = goals.getAllGoalsProgress(userId);
+
+            if (!all.length) {
+                await engine.send(m, {
+                    text: `Belum ada goal.`,
+                    ctx: ctx_local
+                });
+                return;
+            }
+
+            let txt = '';
+
+            for (const p of all) {
+                const bar = generateProgressBar(p.percentage, 10);
+                txt += `│ ${p.goal.name}\n│ ${bar} ${Math.round(p.percentage)}%\n│\n`;
+            }
+
             await engine.send(m, {
                 text: `
-╭───〔 FINANCE GOAL 〕───╮
-│
-│  Perintah tersedia:
-│
-│  .fingoal create <nama> <target> <kategori>
-│  .fingoal list
-│  .fingoal contribute <goal-id> <jumlah>
-│  .fingoal progress
-│
-╰────────────────────╯`,
+╭───〔 PROGRESS 〕───╮
+${txt}╰────────────╯`,
+                ctx: ctx_local
+            });
+        }
+
+        // =========================================
+        // UNKNOWN
+        // =========================================
+        else {
+            await engine.send(m, {
+                text: `Gunakan: create | list | contribute | progress`,
                 ctx: ctx_local
             });
         }
 
     } catch (err) {
         console.error('[fin-goal error]', err);
-        await reply('❌ Terjadi error. Cek format perintah dengan .fingoal');
+        await reply('❌ Terjadi error.');
     }
 };
 
 // =========================================
-// Helper: Generate progress bar
+// PROGRESS BAR
 // =========================================
 const generateProgressBar = (percentage, length = 10) => {
     const filled = Math.round((percentage / 100) * length);
-    const empty = length - filled;
-    return '█'.repeat(Math.min(filled, length)) + '░'.repeat(Math.max(0, empty));
+    return '█'.repeat(filled) + '░'.repeat(length - filled);
 };
 
-handler.command = ['fingoal', 'fgoal', 'goal'];
+handler.command = ['fingoal', 'goal'];
 handler.tags = ['finance'];
 handler.help = [
-    'fingoal create <nama> <target> <kategori> — Buat goal baru',
-    'fingoal list — Lihat semua goal',
-    'fingoal contribute <id> <jumlah> — Kontribusi ke goal',
-    'fingoal progress — Lihat progress semua goal'
+    'fingoal create',
+    'fingoal list',
+    'fingoal contribute',
+    'fingoal progress'
 ];
 
 module.exports = handler;
