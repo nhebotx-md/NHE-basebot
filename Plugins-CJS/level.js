@@ -1,20 +1,18 @@
 /**
  * =========================================
- * FILE: Plugins-CJS/myinfo.js
+ * FILE: Plugins-CJS/level.js
  * DESCRIPTION:
- * Plugin untuk menampilkan profil lengkap user dari ctx.
- * Commands: myinfo, cekprof, profile, me, profilku
+ * Plugin untuk menampilkan detail level dan XP user.
+ * Commands: level, xp, leveling, progres
  *
  * Menampilkan:
- * - Nama & Nomor
- * - Status Register
- * - Role (owner/admin/premium/user)
- * - Level & XP (real-time dari middleware)
- * - Progress Level dengan text bar
- * - Total Command
- * - Tanggal Register
- * - Last Active
- * - Rank global
+ * - Level saat ini
+ * - Total XP
+ * - Progress XP (format: 45/100)
+ * - Progress bar visual
+ * - Persentase
+ * - Estimasi XP menuju level berikutnya
+ * - Reward info
  *
  * SEMUA DATA diambil dari ctx (middleware injection).
  * Plugin ini hanya CONSUMER data.
@@ -32,13 +30,12 @@
  * @param {Object} m - Message object (dengan ctx dari middleware)
  * @param {Object} Obj - Handle data object
  */
-async function myinfoPlugin(m, Obj) {
+async function levelPlugin(m, Obj) {
     const { reply, conn, createReplyEngine, global } = Obj;
 
     try {
         // Ambil context dari middleware injection
         const ctx = m.ctx || {};
-        const user = ctx.user || {};
 
         // Inisialisasi engine
         const engine = createReplyEngine(conn, global);
@@ -53,25 +50,21 @@ async function myinfoPlugin(m, Obj) {
         // --- Jika user belum register ---
         if (!ctx.isRegistered) {
             return await engine.sendHybrid(m, {
-                text: `⚠️ *Profil Tidak Tersedia*\n\n` +
+                text: `⚠️ *Level Info Tidak Tersedia*\n\n` +
                       `Kamu belum terdaftar.\n` +
-                      `Ketik *.register* untuk mendaftar dan melihat profilmu.`,
+                      `Ketik *.register* untuk mendaftar.`,
                 footer: global.botname || 'NHE BOT',
                 buttons: [
                     {
                         buttonId: '.register',
-                        buttonText: { displayText: '📝 Daftar Sekarang' }
+                        buttonText: { displayText: '📝 Daftar' }
                     }
                 ],
                 ctx: context
             });
         }
 
-        // --- Extract SEMUA data dari ctx (consumer only) ---
-        const pushName = ctx.alias || m.pushName || 'User';
-        const phoneNumber = ctx.userId ? ctx.userId.split('@')[0] : 'Unknown';
-        const regStatus = ctx.isRegistered ? '✅ Terdaftar' : '❌ Belum';
-        const role = ctx.roleDisplay || '👤 User';
+        // --- Extract data level dari ctx ---
         const level = ctx.level || 1;
         const xp = ctx.xp || 0;
         const levelProgress = ctx.levelProgress || 0;
@@ -80,94 +73,91 @@ async function myinfoPlugin(m, Obj) {
         const percentage = ctx.percentage || 0;
         const progressBar = ctx.progressBar || '░░░░░░░░░░';
         const totalCommand = ctx.totalCommand || 0;
-        const regCode = ctx.regCode || '-';
-        const regDate = ctx.regDate || 'Tidak diketahui';
 
-        // Format last active
-        const lastActive = ctx.lastActive
-            ? new Date(ctx.lastActive).toLocaleString('id-ID')
-            : 'Belum pernah aktif';
+        // --- Hitung estimasi ---
+        const xpPerCommand = 5; // Sesuai konstanta di userMiddleware
+        const estimatedCommands = Math.ceil(nextLevelXP / xpPerCommand);
 
-        // --- Hitung Rank Global ---
+        // --- Rank ---
         let rankText = 'Tidak tersedia';
-        let totalUsers = 0;
         try {
             if (global.db && global.db.users) {
                 const sorted = Object.entries(global.db.users)
                     .filter(([_, u]) => u.registered)
                     .sort((a, b) => (b[1].xp || 0) - (a[1].xp || 0));
-                totalUsers = sorted.length;
                 const rank = sorted.findIndex(([id, _]) => id === ctx.userId) + 1;
-                if (rank > 0) rankText = `#${rank} dari ${totalUsers} user`;
+                if (rank > 0) rankText = `#${rank}`;
             }
         } catch {
-            // Ignore rank error
+            // Ignore
         }
 
-        // --- Build Profile Message ---
-        const profileText = `
-📊 *USER PROFILE*
+        // --- Build message ---
+        const levelText = `
+⭐ *LEVEL & XP INFO*
 
 ╭─────────────────────────
-│ 👤 *Nama:* ${pushName}
-│ 📱 *Nomor:* ${phoneNumber}
-│ 🔖 *Kode:* \`${regCode}\`
-│ 📝 *Status:* ${regStatus}
+│ 👤 *User:* ${ctx.alias || m.pushName || 'User'}
+│ 🎭 *Role:* ${ctx.roleDisplay || 'User'}
 ╰─────────────────────────
 
 ╭─────────────────────────
-│ 🎭 *Role:* ${role}
 │ ⭐ *Level:* ${level}
-│ ✨ *XP:* ${xp}
+│ ✨ *Total XP:* ${xp}
+│ 📊 *Rank:* ${rankText}
+╰─────────────────────────
+
+╭─────────────────────────
+│ 📈 *PROGRESS LEVEL ${level}*
 │
-│ 📈 *Progress Level*
-│ [${progressBar}] ${percentage}%
+│ [${progressBar}]
+│ ${percentage}%
+│
 │ ${levelProgress}/${neededXp} XP
 │
-│ ⏳ *Menuju Lv.${level + 1}:*
-│ ${nextLevelXP} XP lagi
+│ ⏳ *Menuju Level ${level + 1}:*
+│ Butuh ${nextLevelXP} XP lagi
+│
+│ 📝 *Estimasi:*
+│ ~${estimatedCommands} command lagi
+│ (dengan +${xpPerCommand} XP/cmd)
 ╰─────────────────────────
 
 ╭─────────────────────────
 │ 📊 *Statistik:*
 │ • Total Command: ${totalCommand}
-│ • Rank Global: ${rankText}
-│
-│ 📅 *Register:*
-│ ${regDate}
-│
-│ 🕐 *Last Active:*
-│ ${lastActive}
+│ • XP Rate: +${xpPerCommand} XP per cmd
 ╰─────────────────────────
 
-_Ketik *.menu* untuk melihat fitur_
-_Ketik *.level* untuk detail leveling_
-_Ketik *.stats* untuk statistik lengkap_`;
+💡 *Tip:* Semakin sering menggunakan
+command, semakin cepat naik level!
 
-        // Kirim profil dengan hybrid button
+_Ketik *.help-level* untuk info sistem leveling_
+_Ketik *.daily* untuk klaim reward harian_`;
+
         await engine.sendHybrid(m, {
-            text: profileText,
+            text: levelText,
             footer: global.botname || 'NHE BOT',
             buttons: [
                 {
-                    buttonId: '.level',
-                    buttonText: { displayText: '⭐ Level & XP' }
+                    buttonId: '.myinfo',
+                    buttonText: { displayText: '👤 Profil' }
                 },
                 {
-                    buttonId: '.stats',
-                    buttonText: { displayText: '📊 Statistik' }
+                    buttonId: '.daily',
+                    buttonText: { displayText: '🎁 Daily Reward' }
                 },
                 {
-                    buttonId: '.menu',
-                    buttonText: { displayText: '📚 Menu' }
+                    buttonId: '.leaderboard',
+                    buttonText: { displayText: '🏆 Leaderboard' }
                 }
             ],
             ctx: context
         });
 
     } catch (error) {
-        console.error('[MyInfoPlugin] Error:', error);
-        await reply('❌ Terjadi error saat mengambil profil. Coba lagi nanti.');
+        console.error('[LevelPlugin] Error:', error);
+        await reply('❌ Terjadi error saat mengambil info level. Coba lagi nanti.');
     }
 }
 
@@ -175,22 +165,15 @@ _Ketik *.stats* untuk statistik lengkap_`;
 // PLUGIN METADATA (WAJIB)
 // =========================================
 
-// Command triggers
-myinfoPlugin.command = ['myinfo', 'cekprof', 'profile', 'me', 'profilku', 'infoku'];
-
-// Plugin tags untuk kategorisasi
-myinfoPlugin.tags = ['info', 'user'];
-
-// Help text untuk menu
-myinfoPlugin.help = [
-    'myinfo / cekprof / profile / me',
-    'Menampilkan profil user lengkap dengan level, XP, role, dan statistik'
+levelPlugin.command = ['level', 'xp', 'leveling', 'progres', 'progress'];
+levelPlugin.tags = ['info', 'user', 'leveling'];
+levelPlugin.help = [
+    'level / xp / leveling / progres',
+    'Menampilkan level saat ini, XP, progress bar, dan estimasi naik level'
 ];
-
-// Plugin description
-myinfoPlugin.description = 'Menampilkan profil user termasuk level, XP, role, dan statistik lengkap dari ctx';
+levelPlugin.description = 'Menampilkan detail level, XP, progress, dan estimasi menuju level berikutnya';
 
 // =========================================
 // EXPORT
 // =========================================
-module.exports = myinfoPlugin;
+module.exports = levelPlugin;
