@@ -5,10 +5,11 @@
  * Command: .finbalance
  * Menampilkan saldo, ringkasan bulanan, status budget, dan progress goal
  *
- * INTEGRASI:
- * - Menggunakan ctx.user.number dari middleware
- * - Aman terhadap missing summary field
- * - Tidak merusak logika engine utama
+ * FIX:
+ * - remove initFinanceDB (NOT EXIST)
+ * - remove getQuickSummary (NOT EXIST)
+ * - replace with ensureUser + getBalance
+ * - replace formatCurrency -> formatRupiah
  * =========================================
  */
 
@@ -22,130 +23,89 @@ const handler = async (m, Obj) => {
 
         const engine = createReplyEngine(conn, global);
 
-        // =========================================
-        // VALIDASI CTX
-        // =========================================
+        // ================================
+        // VALIDASI CONTEXT (WAJIB)
+        // ================================
         if (!ctx || !ctx.user) {
             await reply('⚠️ Silakan register terlebih dahulu dengan mengetik .register');
             return;
         }
 
-        const userId = String(ctx?.user?.number || '').trim();
-
-        if (!userId) {
-            await reply('❌ User identity tidak valid. Silakan login ulang.');
+        if (!ctx.userId) {
+            console.error('[fin-balance] ctx.userId missing:', ctx);
+            await reply('❌ Sistem gagal membaca identitas user');
             return;
         }
 
-        // =========================================
-        // LOCAL CONTEXT
-        // =========================================
+        const userId = ctx.userId;
+        const number = ctx.number;
+
+        // ================================
+        // LOCAL CONTEXT UNTUK UI
+        // ================================
         const ctx_local = {
             name: m.pushName || ctx.alias || 'User',
-            number: userId,
-            thumb: global?.thumb || null
+            number,
+            thumb: global?.thumb
         };
 
-        // =========================================
-        // ENGINE INIT
-        // =========================================
+        // ================================
+        // ENGINE IMPORT (FIXED)
+        // ================================
         const {
-            initFinanceDB,
-            getQuickSummary,
-            formatCurrency
+            ensureUser,
+            getBalance,
+            formatRupiah
         } = require('../src/domain/finance/engine');
 
-        initFinanceDB();
+        // ================================
+        // INIT USER SAFE (REPLACEMENT initFinanceDB)
+        // ================================
+        await ensureUser(userId);
 
-        // =========================================
-        // SUMMARY SAFE FETCH
-        // =========================================
-        const summaryRaw = await getQuickSummary(userId);
+        // ================================
+        // FETCH BALANCE (REPLACEMENT getQuickSummary)
+        // ================================
+        const summary = await getBalance(userId);
 
-        const summary = summaryRaw || {};
+        const balance = Number(summary?.balance || 0);
+        const totalIncome = Number(summary?.totalIncome || 0);
+        const totalExpense = Number(summary?.totalExpense || 0);
+        const netFlow = totalIncome - totalExpense;
 
-        const balance = Number(summary.balance || 0);
-        const totalIncome = Number(summary.totalIncome || 0);
-        const totalExpense = Number(summary.totalExpense || 0);
-        const netFlow = Number(summary.netFlow || 0);
+        // ================================
+        // SAFE DEFAULT (karena engine belum support monthly/budget/goals)
+        // ================================
+        const monthly = {};
+        const budgets = [];
+        const goals = [];
 
-        const monthly = summary.monthly || {};
-        const monthlyIncome = Number(monthly.income || 0);
-        const monthlyExpense = Number(monthly.expense || 0);
-        const monthlyNet = Number(monthly.net || 0);
-        const monthlyTxCount = Number(monthly?.summary?.transactionCount || 0);
+        const monthlyIncome = 0;
+        const monthlyExpense = 0;
+        const monthlyNet = 0;
+        const monthlyTxCount = 0;
 
-        const budgets = Array.isArray(summary.budgets)
-            ? summary.budgets
-            : [];
-
-        const goals = Array.isArray(summary.goals)
-            ? summary.goals
-            : [];
-
-        // =========================================
+        // ================================
         // BUDGET TEXT
-        // =========================================
-        let budgetText = '';
+        // ================================
+        let budgetText = '│  (Belum ada budget)\n';
 
-        if (budgets.length > 0) {
-            for (const b of budgets) {
-                const percentage = Number(b?.percentage || 0);
-                const spent = Number(b?.spent || 0);
-                const limit = Number(b?.budget?.amount || 0);
-                const category = b?.budget?.category || 'unknown';
-
-                const bar = generateProgressBar(percentage, 10);
-
-                const status = b?.isOverBudget
-                    ? '🔴'
-                    : b?.isNearLimit
-                        ? '🟡'
-                        : '🟢';
-
-                budgetText +=
-                    `│  ${status} ${category}: ${formatCurrency(spent)}/${formatCurrency(limit)} ${bar}\n`;
-            }
-        } else {
-            budgetText = '│  (Belum ada budget)\n';
-        }
-
-        // =========================================
+        // ================================
         // GOALS TEXT
-        // =========================================
-        let goalsText = '';
+        // ================================
+        let goalsText = '│  (Belum ada goal)\n';
 
-        if (goals.length > 0) {
-            for (const g of goals) {
-                const percentage = Number(g?.percentage || 0);
-                const goalName = g?.goal?.name || 'Unnamed Goal';
-
-                const bar = generateProgressBar(percentage, 8);
-
-                const icon = g?.isCompleted
-                    ? '✅'
-                    : g?.status === 'near-completion'
-                        ? '🏁'
-                        : '🎯';
-
-                goalsText +=
-                    `│  ${icon} ${goalName}: ${Math.round(percentage)}% ${bar}\n`;
-            }
-        } else {
-            goalsText = '│  (Belum ada goal)\n';
-        }
-
-        // =========================================
+        // ================================
         // LEVEL INFO SAFE
-        // =========================================
+        // ================================
         const levelInfo =
             typeof ctx?.level !== 'undefined'
                 ? `│  ⭐ Level: ${ctx.level || 0} (${ctx.xp || 0} XP)\n`
                 : '';
 
-        // =========================================
+        // ================================
         // SEND OUTPUT
-        // =========================================
+        // ================================
         await engine.sendHybrid(m, {
             text: `
 ╭───〔 💰 FINANCE SUMMARY 〕───╮
@@ -158,15 +118,15 @@ ${levelInfo}│  📅 Periode: ${new Date().toLocaleDateString('id-ID', {
             })}
 │
 ├───〔 SALDO 〕───
-│  💵 Saldo Saat Ini: ${formatCurrency(balance)}
-│  📥 Total Pemasukan: ${formatCurrency(totalIncome)}
-│  📤 Total Pengeluaran: ${formatCurrency(totalExpense)}
-│  📊 Net Flow: ${netFlow >= 0 ? '+' : ''}${formatCurrency(netFlow)}
+│  💵 Saldo Saat Ini: ${formatRupiah(balance)}
+│  📥 Total Pemasukan: ${formatRupiah(totalIncome)}
+│  📤 Total Pengeluaran: ${formatRupiah(totalExpense)}
+│  📊 Net Flow: ${netFlow >= 0 ? '+' : ''}${formatRupiah(netFlow)}
 │
 ├───〔 BULAN INI 〕───
-│  📥 Income: ${formatCurrency(monthlyIncome)}
-│  📤 Expense: ${formatCurrency(monthlyExpense)}
-│  📊 Net: ${monthlyNet >= 0 ? '+' : ''}${formatCurrency(monthlyNet)}
+│  📥 Income: ${formatRupiah(monthlyIncome)}
+│  📤 Expense: ${formatRupiah(monthlyExpense)}
+│  📊 Net: ${monthlyNet >= 0 ? '+' : ''}${formatRupiah(monthlyNet)}
 │  📋 Transaksi: ${monthlyTxCount}
 │
 ├───〔 BUDGET STATUS 〕───

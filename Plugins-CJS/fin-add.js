@@ -6,7 +6,24 @@ const handler = async (m, Obj) => {
             throw new Error('[fin-add] createReplyEngine not provided');
         }
 
-        const engine = createReplyEngine(conn, global);
+        const engineRaw = createReplyEngine(conn, global);
+
+
+
+const engine = {
+    send: engineRaw.send.bind(engineRaw),
+    sendHybrid: engineRaw.sendHybrid.bind(engineRaw),
+    sendListUI: engineRaw.sendListUI.bind(engineRaw),
+    sendFlow: engineRaw.sendFlow.bind(engineRaw),
+};
+console.log('[ENGINE DEBUG]', Object.keys(engineRaw));
+const safeCall = (fn, ...args) => {
+    if (typeof fn !== 'function') {
+        console.warn('[SAFE CALL] invalid function');
+        return;
+    }
+    return fn(...args);
+};
 
         // ================================
         // VALIDASI CONTEXT (WAJIB)

@@ -79,7 +79,7 @@ function getLevelProgress(xp) {
         level: currentLevel,
         currentXp: currentLevelXp,
         neededXp: xpNeeded,
-        nextLevelXP: xpNeeded - currentLevelXp,  // Sisa XP menuju level berikutnya
+        nextLevelXP: Math.max(0, (xpNeeded || 0) - (currentLevelXp || 0)),  // Sisa XP menuju level berikutnya
         levelProgress: currentLevelXp,             // XP progress di level saat ini
         percentage,
         totalXp: xp

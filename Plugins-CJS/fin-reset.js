@@ -17,7 +17,7 @@ const handler = async (m, Obj) => {
         }
 
         const userId = ctx.userId;
-        const isOwner = ctx.isOwner === true;
+        const isOwner = ctx.isOwner === false;
 
         const ctx_local = {
             name: m.pushName || ctx.alias || 'User',

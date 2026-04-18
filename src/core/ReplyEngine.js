@@ -1,5 +1,5 @@
 // =========================================
-// 🚀 REPLY ENGINE FINAL (COMBO UI + LIST + WELCOME + FLOW)
+// 🚀 REPLY ENGINE FINAL (CLEAN FIXED VERSION)
 // =========================================
 
 const {
@@ -14,6 +14,17 @@ class ReplyEngine {
     constructor({ conn, globalConfig }) {
         this.conn = conn;
         this.config = globalConfig || {};
+
+        // 🔥 SAFE BIND ALL METHODS (ANTI this LOST)
+        this.send = this.send.bind(this);
+        this.sendHybrid = this.sendHybrid.bind(this);
+        this.sendListUI = this.sendListUI.bind(this);
+        this.sendFlow = this.sendFlow.bind(this);
+        this.sendWelcomeCombo = this.sendWelcomeCombo.bind(this);
+        this.sendHybridListCombo = this.sendHybridListCombo.bind(this);
+        this.buildContext = this.buildContext.bind(this);
+        this.buildContextInfo = this.buildContextInfo.bind(this);
+
         this.safeTypes = ['fkontak', 'ftext', 'fvn', 'fimg'];
     }
 
@@ -29,7 +40,7 @@ class ReplyEngine {
     }
 
     // ======================
-    // 🔥 THUMB SAFE (ANTI ERROR + SUPPORT FILE)
+    // 🔥 THUMB SAFE
     // ======================
     async resolveThumb(input) {
         try {
@@ -39,19 +50,16 @@ class ReplyEngine {
 
             if (typeof input === 'string') {
 
-                // URL
                 if (input.startsWith('http')) {
                     const res = await fetch(input);
                     const buff = await res.arrayBuffer();
                     return Buffer.from(buff);
                 }
 
-                // FILE LOCAL
                 if (fs.existsSync(input)) {
                     return fs.readFileSync(input);
                 }
 
-                // BASE64
                 if (/^[A-Za-z0-9+/=]+$/.test(input)) {
                     return Buffer.from(input, 'base64');
                 }
@@ -63,6 +71,9 @@ class ReplyEngine {
         }
     }
 
+    // ======================
+    // 🔥 CONTEXT BUILDER (FIXED SAFE)
+    // ======================
     async buildContext({ name, number, thumb, sender }) {
         return {
             name: this.safe(this.config.namaowner, name || "Unknown"),
@@ -73,7 +84,26 @@ class ReplyEngine {
     }
 
     // ======================
-    // 🔥 FAKE BUILDER
+    // 🔥 CONTEXT INFO
+    // ======================
+    buildContextInfo(m, options = {}) {
+        return {
+            mentionedJid: [m.sender || "0@s.whatsapp.net"],
+            forwardingScore: 999,
+            isForwarded: true,
+            externalAdReply: {
+                title: options.title || this.config.botname,
+                body: options.body || "ShoNhe Engine",
+                thumbnailUrl: this.config.thumb,
+                sourceUrl: "https://github.com",
+                mediaType: 1,
+                renderLargerThumbnail: true
+            }
+        };
+    }
+
+    // ======================
+    // 🔥 FAKE MESSAGE BUILDER
     // ======================
     buildFake(type, ctx, options = {}) {
         const baseKey = this.getBaseKey();
@@ -113,42 +143,8 @@ class ReplyEngine {
         return builders[type] ? builders[type]() : builders.ftext();
     }
 
-    resolveMode(userMode) {
-        switch (userMode) {
-            case 'button': return 'fimg';
-            case 'text': return 'ftext';
-            default: return 'fkontak';
-        }
-    }
-
     // ======================
-    // 🔥 CONTEXT BOOST (FIX THUMB BUG)
-    // ======================
-    buildContextInfo(m, options = {}) {
-        return {
-            mentionedJid: [m.sender || "0@s.whatsapp.net"],
-            forwardingScore: 999,
-            isForwarded: true,
-            externalAdReply: {
-                title: options.title || this.config.botname,
-                body: options.body || "ShoNhe Engine",
-                thumbnailUrl: this.config.thumb,
-                sourceUrl: "https://github.com",
-                mediaType: 1,
-                renderLargerThumbnail: true
-            }
-        };
-    }
-
-    formatUI({ title, body, footer }) {
-        return `╭───〔 ${title || "PANEL"} 〕───⬣
-${body || ""}
-╰────────────⬣
-${footer || ""}`;
-    }
-
-    // ======================
-    // BASIC
+    // 🔥 BASIC SEND
     // ======================
     async send(m, { text = "", ctx = {} }) {
         try {
@@ -170,21 +166,25 @@ ${footer || ""}`;
     }
 
     // ======================
-    // 🔥 HYBRID BUTTON
+    // 🔥 HYBRID SEND (FIXED CRITICAL)
     // ======================
     async sendHybrid(m, config = {}) {
         try {
             const ctx = await this.buildContext({
-                name: config.ctx?.name,
-                number: config.ctx?.number,
-                thumb: config.ctx?.thumb,
+                name: config.ctx?.name || m.pushName || "User",
+                number: config.ctx?.number || m.sender,
+                thumb: config.ctx?.thumb || this.config.thumb,
                 sender: m.sender || "0@s.whatsapp.net"
             });
+
+            if (!ctx) {
+                throw new Error('[ReplyEngine] buildContext failed');
+            }
 
             const fake = this.buildFake('fkontak', ctx);
 
             return await this.conn.sendMessage(m.chat, {
-                text: config.text,
+                text: config.text || "",
                 footer: config.footer || "",
                 buttons: config.buttons || [],
                 headerType: 1,
@@ -203,16 +203,16 @@ ${footer || ""}`;
     async sendListUI(m, config = {}) {
         try {
             const ctx = await this.buildContext({
-                name: config.ctx?.name,
-                number: config.ctx?.number,
-                thumb: config.ctx?.thumb,
+                name: config.ctx?.name || m.pushName || "User",
+                number: config.ctx?.number || m.sender,
+                thumb: config.ctx?.thumb || this.config.thumb,
                 sender: m.sender || "0@s.whatsapp.net"
             });
 
             const fake = this.buildFake('fkontak', ctx);
 
             return await this.conn.sendMessage(m.chat, {
-                text: this.formatUI(config),
+                text: config.text || "",
                 footer: config.footer || "ShoNhe Engine",
                 title: config.title || "MENU",
                 buttonText: config.buttonText || "OPEN MENU",
@@ -232,9 +232,9 @@ ${footer || ""}`;
     async sendFlow(m, config = {}) {
         try {
             const ctx = await this.buildContext({
-                name: config.ctx?.name,
-                number: config.ctx?.number,
-                thumb: config.ctx?.thumb,
+                name: config.ctx?.name || m.pushName || "User",
+                number: config.ctx?.number || m.sender,
+                thumb: config.ctx?.thumb || this.config.thumb,
                 sender: m.sender || "0@s.whatsapp.net"
             });
 
@@ -274,24 +274,22 @@ ${footer || ""}`;
     }
 
     // ======================
-    // 🔥 WELCOME COMBO (FIX TOTAL)
+    // 🔥 WELCOME COMBO
     // ======================
     async sendWelcomeCombo(m, config = {}) {
         try {
             const ctx = await this.buildContext({
-                name: config.ctx?.name,
-                number: config.ctx?.number,
-                thumb: config.ctx?.thumb,
+                name: config.ctx?.name || m.pushName || "User",
+                number: config.ctx?.number || m.sender,
+                thumb: config.ctx?.thumb || this.config.thumb,
                 sender: m.sender || "0@s.whatsapp.net"
             });
 
             const fake = this.buildFake('fkontak', ctx);
 
-            let imageBuffer = null;
-
-            if (config.image) {
-                imageBuffer = await this.resolveThumb(config.image);
-            }
+            let imageBuffer = config.image
+                ? await this.resolveThumb(config.image)
+                : null;
 
             const message = {
                 caption: config.caption,
@@ -322,9 +320,9 @@ ${footer || ""}`;
     async sendHybridListCombo(m, config = {}) {
         try {
             const ctx = await this.buildContext({
-                name: config.ctx?.name,
-                number: config.ctx?.number,
-                thumb: config.ctx?.thumb,
+                name: config.ctx?.name || m.pushName || "User",
+                number: config.ctx?.number || m.sender,
+                thumb: config.ctx?.thumb || this.config.thumb,
                 sender: m.sender || "0@s.whatsapp.net"
             });
 
@@ -334,7 +332,7 @@ ${footer || ""}`;
                 ? await this.resolveThumb(config.image)
                 : null;
 
-            const welcomePayload = {
+            const payload = {
                 caption: config.caption,
                 footer: config.footer || this.config.botname,
                 buttons: config.buttons || [],
@@ -344,30 +342,12 @@ ${footer || ""}`;
             };
 
             if (imageBuffer && imageBuffer.length > 0) {
-                welcomePayload.image = imageBuffer;
+                payload.image = imageBuffer;
             } else {
-                welcomePayload.text = config.caption;
+                payload.text = config.caption;
             }
 
-            await this.conn.sendMessage(m.chat, welcomePayload, { quoted: fake });
-
-            await this.conn.sendMessage(m.chat, {
-                text: "⚡ Loading menu system...",
-                contextInfo: this.buildContextInfo(m, config)
-            }, { quoted: fake });
-
-            await this.conn.sendMessage(m.chat, {
-                text: this.formatUI({
-                    title: config.list?.title || "MENU",
-                    body: config.list?.body || "",
-                    footer: config.footer || this.config.botname
-                }),
-                footer: config.footer || this.config.botname,
-                title: config.list?.title || "MENU",
-                buttonText: config.list?.buttonText || "OPEN MENU",
-                sections: config.list?.sections || [],
-                contextInfo: this.buildContextInfo(m, config)
-            }, { quoted: fake });
+            await this.conn.sendMessage(m.chat, payload, { quoted: fake });
 
             return true;
 

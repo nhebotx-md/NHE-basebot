@@ -47,12 +47,13 @@ const FinanceUserSchema = new mongoose.Schema({
 // PRE-SAVE HOOK
 // =========================================
 
-FinanceUserSchema.pre('save', function(next) {
-    // Pastikan userId selalu string bersih
-    if (this.userId) {
-        this.userId = this.userId.toString().trim();
+FinanceUserSchema.pre('save', function (next) {
+    try {
+        if (typeof next !== 'function') return;
+        next();
+    } catch (err) {
+        next(err);
     }
-    next();
 });
 
 // =========================================

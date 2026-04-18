@@ -187,7 +187,7 @@ function updateContextAfterCommand(user, ctx) {
     ctx.totalCommand = user.totalCommand;
     ctx.lastActive = user.lastActive;
     ctx.levelProgress = levelInfo.currentXp;
-    ctx.nextLevelXP = levelInfo.nextLevelXP;
+    ctx.nextLevelXP = Number(levelInfo?.nextLevelXP || 0);
     ctx.percentage = levelInfo.percentage;
 
     return ctx;

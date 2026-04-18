@@ -8,7 +8,7 @@
       "firstInteractionAt": 1776528053410,
       "regCode": "REG-6242-5930",
       "alias": "tgx",
-      "xp": 10,
+      "xp": 80,
       "level": 1,
       "role": {
         "owner": false,
@@ -16,8 +16,8 @@
         "premium": false
       },
       "createdAt": 1776528055930,
-      "lastActive": 1776528107114,
-      "totalCommand": 1
+      "lastActive": 1776536461201,
+      "totalCommand": 10
     },
     "6282142783884@s.whatsapp.net": {
       "userId": "6282142783884@s.whatsapp.net",
@@ -35,7 +35,26 @@
         "premium": false
       },
       "createdAt": 1776528053901,
-      "lastActive": 1776528109062,
+      "lastActive": 1776536462132,
+      "totalCommand": 0
+    },
+    "120363424163797384@newsletter": {
+      "userId": "120363424163797384@newsletter",
+      "registered": false,
+      "registerPromptSent": true,
+      "firstSeen": true,
+      "firstInteractionAt": 1776535602850,
+      "regCode": null,
+      "alias": "User",
+      "xp": 0,
+      "level": 1,
+      "role": {
+        "owner": false,
+        "admin": false,
+        "premium": false
+      },
+      "createdAt": 0,
+      "lastActive": 0,
       "totalCommand": 0
     }
   },
@@ -43,7 +62,7 @@
   "settings": {
     "botName": "ShoNhe",
     "version": "1.2.0",
-    "lastUpdated": 1776528123120
+    "lastUpdated": 1776536758449
   },
   "stats": {
     "totalMessages": 0,

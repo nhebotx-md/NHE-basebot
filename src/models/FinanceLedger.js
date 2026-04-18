@@ -76,21 +76,18 @@ FinanceLedgerSchema.index({ userId: 1, category: 1 });
 // PRE-SAVE VALIDATION
 // =========================================
 
-FinanceLedgerSchema.pre('save', function(next) {
-    // Pastikan userId selalu string bersih
-    if (this.userId) {
-        this.userId = this.userId.toString().trim();
-    }
+FinanceLedgerSchema.pre('save', function (next) {
+    try {
+        if (typeof next !== 'function') return;
 
-    // Pastikan amount selalu positive number
-    if (this.amount !== undefined) {
-        this.amount = Math.abs(parseFloat(this.amount));
-        if (isNaN(this.amount) || this.amount <= 0) {
+        if (this.amount <= 0) {
             return next(new Error('amount must be a positive number'));
         }
-    }
 
-    next();
+        next();
+    } catch (err) {
+        next(err);
+    }
 });
 
 // =========================================
