@@ -8,6 +8,12 @@
  * - Ensures global.db.users exists for middleware system
  * - Added usersCount tracking in stats
  *
+ * 🔧 UPDATED: Restart-Safe Database Engine
+ * - Reloads database.json without overwriting existing data
+ * - Revalidates all user levels from XP on startup
+ * - Anti data reset protection
+ * - Graceful recovery from crash/restart
+ *
  * 📁 INTEGRATION POINT: Database Layer
  * =========================================
  */
@@ -25,17 +31,19 @@ const { EVENT_TYPES, emitFinanceEvent } = events;
 // =========================================
 const DB_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DB_DIR, 'finance.json');
+const USERS_DB_FILE = path.join(DB_DIR, 'database.json');  // Primary users DB
 const MAX_LOG_ENTRIES = 1000;
 
 // =========================================
-// 📌 DATABASE INITIALIZATION
+// 📌 DATABASE INITIALIZATION (RESTART-SAFE)
 // =========================================
 
 /**
  * Initialize the global database
  * Creates data directory and sets up global.db
+ * CRITICAL: Preserves existing data, never overwrites
  *
- * 🔧 MODIFIED: Added global.db.users initialization
+ * 🔧 MODIFIED: Added global.db.users initialization with reload
  */
 function initFinanceDB() {
     // Create data directory if it doesn't exist
@@ -43,18 +51,86 @@ function initFinanceDB() {
         fs.mkdirSync(DB_DIR, { recursive: true });
     }
 
-    // Load existing database or create new
+    // ============================================
+    // Load finance database (existing logic)
+    // ============================================
     let existingData = {};
     if (fs.existsSync(DB_FILE)) {
         try {
             const raw = fs.readFileSync(DB_FILE, 'utf8');
             existingData = JSON.parse(raw);
+            console.log('[FinanceEngine] Loaded existing finance database');
         } catch (e) {
-            console.error('[FinanceEngine] Error loading DB:', e.message);
+            console.error('[FinanceEngine] Error loading finance DB:', e.message);
+            existingData = {};
         }
     }
 
-    // Initialize global.db with finance data
+    // ============================================
+    // Load users database (PRIMARY - database.json)
+    // ============================================
+    let usersData = {};
+    let loadedFromUsersDB = false;
+
+    // PRIMARY: Try to load from database.json first (users database)
+    if (fs.existsSync(USERS_DB_FILE)) {
+        try {
+            const raw = fs.readFileSync(USERS_DB_FILE, 'utf8');
+            const parsed = JSON.parse(raw);
+
+            // Handle different database.json formats
+            if (parsed.users && typeof parsed.users === 'object') {
+                usersData = parsed.users;
+                loadedFromUsersDB = true;
+                console.log(`[FinanceEngine] Loaded ${Object.keys(usersData).length} users from database.json`);
+            } else if (typeof parsed === 'object' && !parsed.finance) {
+                // If it's a flat object of users (jid -> data)
+                usersData = parsed;
+                loadedFromUsersDB = true;
+                console.log(`[FinanceEngine] Loaded ${Object.keys(usersData).length} users from database.json (flat format)`);
+            }
+        } catch (e) {
+            console.error('[FinanceEngine] Error loading users DB:', e.message);
+            usersData = {};
+        }
+    }
+
+    // FALLBACK: If no users in database.json, try finance.json users field
+    if (!loadedFromUsersDB && existingData.users && typeof existingData.users === 'object') {
+        usersData = existingData.users;
+        console.log(`[FinanceEngine] Loaded ${Object.keys(usersData).length} users from finance.json fallback`);
+    }
+
+    // ============================================
+    // CRITICAL: Revalidate all user levels from XP
+    // This fixes any desync after restart/crash
+    // ============================================
+    let fixedLevels = 0;
+    for (const [userId, user] of Object.entries(usersData)) {
+        if (!user || typeof user !== 'object') continue;
+
+        // Ensure required fields exist
+        if (typeof user.xp !== 'number') user.xp = 0;
+        if (typeof user.level !== 'number') user.level = 1;
+        if (typeof user.registered !== 'boolean') user.registered = false;
+        if (typeof user.totalCommand !== 'number') user.totalCommand = 0;
+
+        // Recalculate level from XP (CRITICAL: no cache)
+        const correctLevel = Math.floor((user.xp || 0) / 100) + 1;
+        if (user.level !== correctLevel) {
+            console.log(`[FinanceEngine] Level revalidated for ${userId}: ${user.level} → ${correctLevel}`);
+            user.level = correctLevel;
+            fixedLevels++;
+        }
+    }
+
+    if (fixedLevels > 0) {
+        console.log(`[FinanceEngine] Revalidated ${fixedLevels} user level(s)`);
+    }
+
+    // ============================================
+    // Initialize global.db
+    // ============================================
     global.db = {
         // Finance data (existing)
         data: existingData.data || {},
@@ -72,13 +148,16 @@ function initFinanceDB() {
 
         // 🔧 ADDED: Users database for middleware system
         // Single Source of Truth for user data
-        users: existingData.users || {},
+        users: usersData,
 
         _meta: {
             version: '1.0.0',
             lastBackup: null,
-            initializedAt: Date.now()
-        }
+            initializedAt: Date.now(),
+            usersLoadedFrom: loadedFromUsersDB ? 'database.json' : (existingData.users ? 'finance.json' : 'new'),
+            levelsRevalidated: fixedLevels
+        },
+        _modified: false
     };
 
     console.log('[FinanceEngine] Database initialized');
@@ -90,25 +169,46 @@ function initFinanceDB() {
     // Emit initialization event
     emitFinanceEvent(EVENT_TYPES.INITIALIZED, {
         timestamp: Date.now(),
-        hasExistingData: Object.keys(existingData).length > 0
+        hasExistingData: Object.keys(existingData).length > 0,
+        usersCount: Object.keys(global.db.users).length,
+        levelsFixed: fixedLevels
     });
 }
 
 /**
- * Save database to disk
+ * Save database to disk (USERS + FINANCE)
+ * Saves to both finance.json and database.json for redundancy
  */
 function saveDB() {
     try {
-        const dataToSave = {
+        // ============================================
+        // Save finance data to finance.json
+        // ============================================
+        const financeDataToSave = {
             data: global.db.data,
             finance: global.db.finance,
-            users: global.db.users,
+            users: global.db.users,  // Include users for fallback
             _meta: {
                 ...global.db._meta,
                 lastSaved: Date.now()
             }
         };
-        fs.writeFileSync(DB_FILE, JSON.stringify(dataToSave, null, 2));
+        fs.writeFileSync(DB_FILE, JSON.stringify(financeDataToSave, null, 2));
+
+        // ============================================
+        // CRITICAL: Also save users to database.json
+        // This is the primary users database file
+        // ============================================
+        const usersDataToSave = {
+            users: global.db.users,
+            _meta: {
+                version: '1.0.0',
+                lastSaved: Date.now(),
+                userCount: Object.keys(global.db.users).length
+            }
+        };
+        fs.writeFileSync(USERS_DB_FILE, JSON.stringify(usersDataToSave, null, 2));
+
     } catch (e) {
         console.error('[FinanceEngine] Save error:', e.message);
     }
@@ -116,6 +216,7 @@ function saveDB() {
 
 /**
  * Setup auto-save interval
+ * Saves every 30 seconds if data has been modified
  */
 function setupAutoSave() {
     setInterval(() => {

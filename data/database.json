@@ -1,8 +1,85 @@
 {
+  "data": {},
   "finance": {
-    "initialized": true,
-    "initializedAt": "2026-04-17T17:19:16.272Z",
-    "version": "1.0.0"
+    "transactions": [],
+    "categories": {
+      "income": [
+        "Gaji",
+        "Bonus",
+        "Investasi",
+        "Lainnya"
+      ],
+      "expense": [
+        "Makanan",
+        "Transportasi",
+        "Belanja",
+        "Hiburan",
+        "Tagihan",
+        "Lainnya"
+      ]
+    },
+    "budgets": {},
+    "goals": [],
+    "recurring": [],
+    "logs": []
   },
-  "users": {}
+  "users": {
+    "218786137436242@lid": {
+      "userId": "218786137436242@lid",
+      "registered": true,
+      "registerPromptSent": true,
+      "firstSeen": true,
+      "firstInteractionAt": 1776497707640,
+      "regCode": "REG-6242-5754",
+      "alias": "tgx",
+      "xp": 0,
+      "level": 1,
+      "role": {
+        "owner": false,
+        "admin": false,
+        "premium": false
+      },
+      "createdAt": 1776497715754,
+      "lastActive": 0,
+      "totalCommand": 0
+    },
+    "6282142783884@s.whatsapp.net": {
+      "userId": "6282142783884@s.whatsapp.net",
+      "registered": true,
+      "registerPromptSent": true,
+      "firstSeen": true,
+      "firstInteractionAt": 1776497708161,
+      "regCode": "REG-3884-8162",
+      "alias": "User",
+      "xp": 0,
+      "level": 1,
+      "role": {
+        "owner": false,
+        "admin": false,
+        "premium": false
+      },
+      "createdAt": 1776497708162,
+      "lastActive": 0,
+      "totalCommand": 0
+    }
+  },
+  "_meta": {
+    "version": "1.0.0",
+    "lastBackup": null,
+    "initializedAt": 1776497685448,
+    "usersLoadedFrom": "database.json",
+    "levelsRevalidated": 0
+  },
+  "_modified": false,
+  "sessions": {},
+  "settings": {
+    "botName": "ShoNhe",
+    "version": "1.2.0",
+    "lastUpdated": 1776497715754
+  },
+  "stats": {
+    "totalMessages": 0,
+    "totalCommands": 0,
+    "startTime": 1776497688434
+  }
 }

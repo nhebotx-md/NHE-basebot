@@ -1,9 +1,15 @@
 /**
  * =========================================
- * 📌 FILE: src/middleware/contextBuilder.js
- * 📌 DESCRIPTION:
+ * FILE: src/middleware/contextBuilder.js
+ * DESCRIPTION:
  * Context builder untuk menyusun context object
  * yang akan di-inject ke semua plugin dan case handlers.
+ *
+ * MODIFICATION (Refactoring):
+ * - Added levelProgress & nextLevelXP ke context
+ * - Added percentage & progress bar
+ * - Added registration date formatting
+ * - Ensures real-time level calculation
  *
  * Semua plugin WAJIB mengakses data user melalui ctx.
  *
@@ -11,16 +17,22 @@
  * =========================================
  */
 
-const { calculateLevel, getLevelProgress, formatLevelInfo } = require('./levelSystem');
+const { calculateLevel, getLevelProgress, formatLevelInfo, getCompactLevelData, recalculateLevelFromXP } = require('./levelSystem');
 const { resolveRoles, formatRole } = require('./roleResolver');
 
 // =========================================
-// 📌 CONTEXT BUILDER
+// CONTEXT BUILDER
 // =========================================
 
 /**
  * Build context object for plugin execution
  * This context is injected to ALL plugins and case handlers
+ *
+ * CONTEXT STRUCTURE (WAJIB tersedia di semua plugin):
+ * {
+ *   user, isOwner, isAdmin, isPremium,
+ *   level, xp, levelProgress, nextLevelXP, levelUp
+ * }
  *
  * @param {Object} params - Build parameters
  * @param {Object} params.user - User object from global.db.users
@@ -45,18 +57,39 @@ function buildContext({ user, userId, botNumber, groupMetadata, levelUp = false 
             roleDisplay: '❌ Unregistered',
             level: 0,
             xp: 0,
+            levelProgress: 0,
+            nextLevelXP: 100,
+            neededXp: 100,
+            percentage: 0,
+            progressBar: '░░░░░░░░░░',
             levelUp: false,
             totalCommand: 0,
             lastActive: 0,
-            createdAt: 0
+            createdAt: 0,
+            isRegistered: false,
+            regCode: null
         };
     }
+
+    // Pastikan level selalu dihitung real-time dari XP
+    recalculateLevelFromXP(user);
 
     // Resolve roles
     const roles = resolveRoles({ userId, botNumber, groupMetadata });
 
-    // Calculate level info
+    // Calculate level info (real-time dari XP)
     const levelInfo = getLevelProgress(user.xp || 0);
+    const compactLevel = getCompactLevelData(user.xp || 0);
+
+    // Format registration date
+    const regDate = user.createdAt
+        ? new Date(user.createdAt).toLocaleDateString('id-ID', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+          })
+        : 'Belum terdaftar';
 
     // Build comprehensive context
     const ctx = {
@@ -75,16 +108,25 @@ function buildContext({ user, userId, botNumber, groupMetadata, levelUp = false 
         roleDisplay: formatRole(roles.highestRole),
         rolePriority: roles.priority,
 
-        // Level & XP
-        level: user.level || levelInfo.level,
+        // Level & XP (REAL-TIME dari XP)
+        level: levelInfo.level,
         xp: user.xp || 0,
-        levelProgress: levelInfo,
+
+        // Level progress data (WAJIB ada untuk plugin myinfo)
+        levelProgress: levelInfo.currentXp,      // XP di level saat ini
+        nextLevelXP: levelInfo.nextLevelXP,      // Sisa XP menuju level berikutnya
+        neededXp: levelInfo.neededXp,            // Total XP needed for current level
+        percentage: levelInfo.percentage,        // Progress percentage
+        progressBar: compactLevel.progressBar,   // Text progress bar
+
+        // Level up notification flag
         levelUp,
 
         // Stats
         totalCommand: user.totalCommand || 0,
         lastActive: user.lastActive || 0,
         createdAt: user.createdAt || 0,
+        regDate,                                 // Formatted registration date
         alias: user.alias || 'User',
 
         // Registration info
@@ -129,9 +171,15 @@ function updateContextAfterCommand(user, ctx) {
     user.totalCommand = (user.totalCommand || 0) + 1;
     user.lastActive = Date.now();
 
+    // Rebuild level info (real-time)
+    const levelInfo = getLevelProgress(user.xp || 0);
+
     // Update context
     ctx.totalCommand = user.totalCommand;
     ctx.lastActive = user.lastActive;
+    ctx.levelProgress = levelInfo.currentXp;
+    ctx.nextLevelXP = levelInfo.nextLevelXP;
+    ctx.percentage = levelInfo.percentage;
 
     return ctx;
 }
@@ -151,7 +199,7 @@ function injectContext(m, ctx) {
 }
 
 // =========================================
-// 📌 EXPORT
+// EXPORT
 // =========================================
 module.exports = {
     buildContext,
