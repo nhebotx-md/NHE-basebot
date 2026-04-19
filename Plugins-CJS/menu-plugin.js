@@ -1,85 +1,61 @@
-/**
- * =========================================
- * 📌 PLUGIN: Menu Interaktif dengan ReplyEngine
- * 📌 FILE: Plugins-CJS/menu-plugin.js
- * =========================================
- */
-
-const fs = require('fs');
-const path = require('path');
-
 const handler = async (m, Obj) => {
-    const { reply, conn, createReplyEngine, global, runtime, plugins, pluginsList } = Obj;
+    const { conn, createReplyEngine, global, plugins } = Obj;
 
     try {
+
         if (!createReplyEngine) {
-            throw new Error('createReplyEngine is not provided');
+            throw new Error('createReplyEngine not provided');
         }
 
-        const engine = createReplyEngine(conn, global);
+        // =========================
+        // 🔥 ENGINE WRAPPER (STANDARD)
+        // =========================
+        const engineRaw = createReplyEngine(conn, global);
+        
+        
 
-        const sender = m.sender || "0@s.whatsapp.net";
-
-        const ctx = {
-            name: m.pushName || "User",
-            number: sender.split('@')[0],
-            thumb: global?.thumb
+        const engine = {
+            send: engineRaw.send.bind(engineRaw),
+            sendHybrid: engineRaw.sendHybrid.bind(engineRaw),
+            sendListUI: engineRaw.sendListUI.bind(engineRaw),
+            sendFlow: engineRaw.sendFlow.bind(engineRaw),
         };
 
-        // ======================
-        // 🔥 AMBIL PLUGIN DINAMIS
-        // ======================
+        // =========================
+        // 🔥 SAFE CONTEXT BUILDER
+        // =========================
+        const ctx = {
+            name: m.pushName || "User",
+            number: (m.sender || "").split("@")[0],
+            thumb: global?.thumb || null
+        };
+
+        // =========================
+        // 🔥 PLUGIN REGISTRY SAFE LOAD
+        // =========================
         const pluginData = plugins || global.plugins || {};
-const pluginList = pluginData.list || [];
-const byTag = pluginData.byTag || new Map();
-console.log('PLUGIN LIST:', pluginList.length);
-console.log('BYTAG SIZE:', byTag.size);
-console.log('BYTAG KEYS:', [...byTag.keys()]);
+        const byTag = pluginData.byTag instanceof Map ? pluginData.byTag : new Map();
 
-        // ======================
-        // 🔥 COUNT OTOMATIS
-        // ======================
-        const TOTAL = pluginList.length || 0;
+        if (byTag.size === 0) {
+            return engine.sendHybrid(m, {
+                text: "⚠ Menu tidak bisa dimuat (plugin kosong)",
+                footer: global?.botname || "NHE BOT",
+                ctx
+            });
+        }
 
-        const menuText = `
-╭──────[ *ABOUT BOT* ]──────╮
-│▣ Nama-Bot : ${global?.botname || 'NHE BOT'}
-│▣ Version : 2.0.0 (Dynamic)
-│▣ Runtime : ${typeof runtime === 'function' ? runtime(process.uptime()) : '-'}
-│▣ Feature : ${TOTAL} command
-│▣ System : Auto Plugin Loader
-╰─────────────────────╯
-
-Halo ${m.pushName || "User"} 👋
-Menu disusun otomatis berdasarkan plugin tags
-        `.trim();
-
-        // ======================
-        // 🔹 HEADER UI
-        // ======================
-        await engine.sendHybrid(m, {
-            text: menuText,
-            footer: "Dynamic Menu System",
-            buttons: [
-                { buttonId: ".ping", buttonText: { displayText: "🏓 PING" } },
-                { buttonId: ".owner", buttonText: { displayText: "👑 OWNER" } }
-            ],
-            ctx
-        });
-
-        await new Promise(r => setTimeout(r, 500));
-
-        // ======================
-        // 🔥 GENERATE MENU DINAMIS
-        // ======================
+        // =========================
+        // 🔥 MENU BUILDER ENGINE
+        // =========================
         const sections = [];
 
         for (const [tag, list] of byTag.entries()) {
 
             const rows = [];
 
-            for (const plugin of list) {
-                if (!plugin.command || !plugin.command.length) continue;
+            for (const plugin of list || []) {
+
+                if (!plugin?.command?.length) continue;
 
                 const cmd = plugin.command[0];
 
@@ -98,40 +74,70 @@ Menu disusun otomatis berdasarkan plugin tags
             }
         }
 
-        // fallback kalau kosong
+        // =========================
+        // 🔥 FALLBACK SAFE MODE
+        // =========================
         if (!sections.length) {
             sections.push({
-                title: "⚠️ EMPTY",
+                title: "SYSTEM",
                 rows: [{
-                    title: "No plugins detected",
-                    description: "Check plugin loader",
+                    title: "No Plugins Found",
+                    description: "Registry empty or not loaded",
                     rowId: ".menu"
                 }]
             });
         }
 
-        // ======================
-        // 🔹 LIST UI DINAMIS
-        // ======================
-        await engine.sendListUI(m, {
-            title: "📚 DYNAMIC MENU",
-            body: "Semua menu berdasarkan plugin aktif:",
-            footer: global?.botname || "NHE BOT",
-            buttonText: "📋 LIHAT MENU",
-            sections,
-            ctx
-        });
+        // =========================
+        // 🔥 FINAL RENDER
+        // =========================
+        console.log("ENGINE:", typeof engine.sendListUI);
+        console.log("SENDLISTUI TYPE:", engine.sendListUI.toString().slice(0, 200));
+        console.log("SECTIONS DUMP:", JSON.stringify(sections, null, 2));
+        if (typeof engine.sendListUI !== "function") {
+    return m.reply("❌ sendListUI bukan function (engine rusak)");
+}
+await conn.sendMessage(m.chat, {
+    text: "ENGINE TEST OK"
+}, { quoted: m });
+await conn.sendMessage(m.chat, {
+    text: "MENU",
+    footer: "BOT",
+    title: "TEST",
+    buttonText: "OPEN",
+    sections: []
+}, { quoted: m });
+console.log("RAW SECTIONS:", JSON.stringify(sections, null, 2));
+        sendListUI: async (m, {
+    text,
+    title,
+    footer,
+    buttonText,
+    sections,
+    ctx
+}) => {
+
+    const msg = {
+        text: text || title || "MENU",
+        footer: footer || "",
+        title: undefined,
+        buttonText: buttonText || "OPEN MENU",
+        sections: sections
+    };
+
+    return await engineRaw.sendMessage(m.chat, msg, {
+        quoted: m
+    });
+}
 
     } catch (err) {
-        console.error('[MenuPlugin Error]', err);
-        await reply('❌ Terjadi error pada menu plugin');
+        console.error('[menup error]', err);
+        return m.reply("❌ Menu system error");
     }
 };
 
-
-// ✅ Metadata wajib
-handler.command = ['menuplugin', 'menureply', 'menup'];
-handler.tags = ['main', 'menu'];
-handler.help = ['menuplugin'];
+handler.command = ['menup'];
+handler.tags = ['main'];
+handler.help = ['menup'];
 
 module.exports = handler;
